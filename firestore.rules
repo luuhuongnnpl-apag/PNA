@@ -19,6 +19,19 @@ service cloud.firestore {
    allow create,update: if admin() && request.resource.data.keys().hasOnly(['payload','version','updatedAt','updatedBy']) && request.resource.data.payload is string && request.resource.data.payload.size() <= 500000 && request.resource.data.version == 1 && request.resource.data.updatedAt == request.time && request.resource.data.updatedBy == request.auth.uid;
    allow list,delete: if false;
   }
+  // Only the explicitly published resource snapshot is readable from the public website.
+  function validPublication() {
+   let data = request.resource.data;
+   return data.keys().hasAll(['payload','version','publishedAt'])
+    && data.keys().hasOnly(['payload','version','publishedAt'])
+    && data.payload is string && data.payload.size() > 0 && data.payload.size() <= 350000
+    && data.version == 1 && data.publishedAt == request.time;
+  }
+  match /systemLayouts/publishedEditorial {
+   allow get: if true;
+   allow create, update: if admin() && validPublication();
+   allow list, delete: if false;
+  }
   match /{document=**} { allow read,write: if false; }
  }
 }

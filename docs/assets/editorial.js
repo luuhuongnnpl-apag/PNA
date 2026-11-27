@@ -1,4 +1,5 @@
 import {resourcePages} from './portal-data.js?v=016';
+import {starterContent} from './starter-content.js?v=017';
 
 const blockTypes = {heading: 'Tiêu đề', text: 'Đoạn văn', list: 'Danh sách', callout: 'Ghi chú', link: 'Liên kết', collection: 'Cơ sở dữ liệu'};
 const fieldTypes = {text: 'Văn bản', number: 'Số', date: 'Ngày', select: 'Lựa chọn'};
@@ -62,6 +63,35 @@ export function validEditorial(draft) {
   return byteSize(draft) <= 350000;
 }
 
+export function publishedEditorial(draft) {
+  if (!validEditorial(draft)) return null;
+  const ready = new Map(draft.pages.filter(page => page.status === 'ready').map(page => [page.id, page]));
+  const canPublish = page => !page.parent || resourceIds.has(page.parent) ||
+    (ready.has(page.parent) && canPublish(ready.get(page.parent)));
+  const eligible = new Set(draft.collections.filter(item => item.public === true).map(item => item.id));
+  const blocks = entries => entries.filter(item => item.type !== 'collection' || eligible.has(item.value))
+    .map(({id, type, value, url, view}) => ({id, type, value, url, view}));
+  const pages = [...ready.values()].filter(canPublish).map(({id, title, parent, status, blocks: entries}) =>
+    ({id, title, parent, status, blocks: blocks(entries)}));
+  const referenced = new Set();
+  function addReferences(entries) {
+    for (const entry of entries) {
+      if (entry.type !== 'collection' || referenced.has(entry.value)) continue;
+      const collection = draft.collections.find(item => item.id === entry.value);
+      if (!collection) continue;
+      referenced.add(entry.value);
+      for (const row of collection.rows) addReferences(blocks(row.blocks));
+    }
+  }
+  for (const page of pages) addReferences(page.blocks);
+  const collections = draft.collections.filter(item => referenced.has(item.id))
+    .map(({id, title, fields, rows}) => ({id, title, public: true,
+      fields: fields.map(({id, title, type, choices}) => ({id, title, type, choices})),
+      rows: rows.map(({id, title, values, blocks: entries}) => ({id, title, values, blocks: blocks(entries)})),
+    }));
+  return {version: 1, pages, collections};
+}
+
 const html = value => String(value ?? '').replace(/[&<>"']/g, character =>
   ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[character]);
 const option = (value, label, selected) => `<option value="${html(value)}" ${value === selected ? 'selected' : ''}>${html(label)}</option>`;
@@ -84,7 +114,11 @@ function collectionView(collection, mode, action) {
     const value = row.values[field.id];
     return value && field.type === 'date' ? value.split('-').reverse().join('/') : value || '—';
   };
-  const rowTitle = row => action ? control(action, shown(row.title), collection.id + '/' + row.id) : html(shown(row.title));
+  const rowTitle = row => {
+    const route = collection.id + '/' + row.id;
+    if (action === 'public') return `<a href="#data/${html(route)}">${html(shown(row.title))}</a>`;
+    return action ? control(action, shown(row.title), route) : html(shown(row.title));
+  };
   if (mode === 'cards') return `<div class="archive-grid">${collection.rows.map(row =>
     `<article class="archive-link"><strong>${rowTitle(row)}</strong><dl>${collection.fields.map(field =>
       `<dt>${html(field.title)}</dt><dd>${html(shownValue(field, row))}</dd>`).join('')}</dl></article>`).join('')}</div>`;
@@ -94,10 +128,11 @@ function collectionView(collection, mode, action) {
       `<td>${html(shownValue(field, row))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 
-function renderBlocks(blocks, collections) {
+export function renderBlocks(blocks, collections, isPublic = false) {
+  const headingTag = isPublic ? 'h3' : 'h4';
   return blocks.map(item => {
     switch (item.type) {
-      case 'heading': return item.value.trim() ? `<h4>${html(item.value)}</h4>` : '';
+      case 'heading': return item.value.trim() ? `<${headingTag}>${html(item.value)}</${headingTag}>` : '';
       case 'list': return `<ul>${item.value.split('\n').filter(line => line.trim()).map(line => `<li>${html(line)}</li>`).join('')}</ul>`;
       case 'callout': return item.value.trim() ? `<aside class="editor-callout">${previewText(item.value)}</aside>` : '';
       case 'link': {
@@ -106,7 +141,7 @@ function renderBlocks(blocks, collections) {
       }
       case 'collection': {
         const collection = collections.find(entry => entry.id === item.value);
-        return collection ? `<h4>${html(shown(collection.title))}</h4>${collectionView(collection, item.view, 'preview-row')}` : '';
+        return collection ? `<${headingTag}>${html(shown(collection.title))}</${headingTag}>${collectionView(collection, item.view, isPublic ? 'public' : 'preview-row')}` : '';
       }
       default: return item.value.trim() ? previewText(item.value) : '';
     }
@@ -134,7 +169,7 @@ export function createEditorial(host) {
   function pages(draft) {
     const existing = new Map(draft.pages.map(page => [page.id, page]));
     const roots = resourcePages.map(([item, title]) =>
-      existing.get(item) || {id: item, title, parent: '', status: 'draft', blocks: []});
+      existing.get(item) || {id: item, title, parent: '', status: 'draft', blocks: starterContent(item)});
     return roots.concat(draft.pages.filter(page => !resourceIds.has(page.id)));
   }
 
@@ -214,6 +249,7 @@ export function createEditorial(host) {
           <label>Trạng thái<select data-editor-page="status">${options([['draft', 'Bản nháp'], ['ready', 'Sẵn sàng']], current.status)}</select></label>
           ${parentField}
         </div>
+        ${resourceIds.has(current.id) && !current.blocks.length ? control('starter', 'Dùng nội dung gợi ý') : ''}
         ${editBlocks(current, draft)}
       `}</div>
     </div>`;
@@ -279,6 +315,8 @@ export function createEditorial(host) {
           <div class="form-grid"><label>Tên mục<input data-editor-page="title" maxlength="120" value="${html(row.title)}"></label>
             ${collection.fields.map(field => fieldInput(field, row)).join('')}</div>${editBlocks(row, draft)}`}
       ` : `
+        <label class="inline"><input type="checkbox" data-editor-collection-public ${collection.public ? 'checked' : ''}>
+          Cho phép xuất bản toàn bộ dữ liệu khi được nhúng vào trang sẵn sàng</label>
         <details><summary>Thuộc tính của cơ sở dữ liệu</summary>
           <p class="muted">${collection.fields.map(field => html(field.title + ' · ' + fieldTypes[field.type])).join(' / ') || 'Chưa có thuộc tính.'}</p>
           <form class="form-grid editorial-new" data-editor-form="add-field">
@@ -336,6 +374,9 @@ export function createEditorial(host) {
   host.addEventListener('change', event => {
     const target = event.target;
     if (target.hasAttribute('data-editor-field')) target.form.elements.choices.closest('label').hidden = target.value !== 'select';
+    if (target.hasAttribute('data-editor-collection-public')) change(draft => {
+      draft.collections.find(item => item.id === collectionId).public = target.checked;
+    }, false);
     if (target.tagName === 'SELECT') setControlValue(target);
   });
   host.addEventListener('input', event => {
@@ -375,6 +416,7 @@ export function createEditorial(host) {
     const button = event.target.closest('[data-editor]');
     if (!key || !button) return;
     const {editor: action, item} = button.dataset;
+    if (action === 'starter') { change(draft => { active(draft).blocks = starterContent(pageId); }); return; }
     if (['up', 'down', 'remove'].includes(action)) {
       change(draft => {
         const blocks = active(draft).blocks;
@@ -421,6 +463,7 @@ export function createEditorial(host) {
       }
       return local;
     },
+    publication() { return key ? publishedEditorial(readDraft()) : null; },
     synced,
     load(draft) {
       if (!key || !validEditorial(draft)) return false;

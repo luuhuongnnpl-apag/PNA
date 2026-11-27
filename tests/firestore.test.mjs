@@ -47,3 +47,23 @@ test("password provider cannot use admin privileges",async()=>assertFails(getDoc
 test("admin can update draft, others cannot",async()=>{await assertSucceeds(setDoc(ref(admin(),"systemLayouts/adminDraft"),{payload:"{}",version:1,updatedAt:serverTimestamp(),updatedBy:"admin"}));await assertFails(getDoc(ref(advisor(),"systemLayouts/adminDraft")));await assertFails(setDoc(ref(advisor(),"systemLayouts/adminDraft"),{payload:"{}",version:1,updatedAt:serverTimestamp(),updatedBy:"advisor"}))});
 test("admin cannot delete grant or draft",async()=>{await assertFails(deleteDoc(ref(admin(),"accessGrants/advisor@example.test")));await assertFails(deleteDoc(ref(admin(),"systemLayouts/adminDraft")))});
 test("unknown collections and writes default deny even for admin",async()=>{await assertFails(getDoc(ref(admin(),"students/S1")));await assertFails(setDoc(ref(admin(),"administrativeClasses/A1"),{name:"New"}))});
+
+const publicationPath = "systemLayouts/publishedEditorial";
+const publication = () => ({payload:'{"version":1,"pages":[],"collections":[]}',version:1,publishedAt:serverTimestamp()});
+test("only the published snapshot has public read access",async()=>{
+  await assertSucceeds(setDoc(ref(admin(),publicationPath),publication()));
+  await assertSucceeds(getDoc(ref(guest(),publicationPath)));
+  await assertFails(getDoc(ref(guest(),"systemLayouts/adminDraft")));
+  await assertFails(getDocs(collection(guest(),"systemLayouts")));
+});
+test("only the verified administrator can publish and the same schema applies to changes",async()=>{
+  for (const db of [guest(),advisor(),student(),client("fake",adminEmail,{email_verified:false})]) {
+    await assertFails(setDoc(ref(db,publicationPath),publication()));
+  }
+  await assertSucceeds(setDoc(ref(admin(),publicationPath),publication()));
+  await assertSucceeds(setDoc(ref(admin(),publicationPath),publication()));
+  await assertFails(setDoc(ref(admin(),publicationPath),{...publication(),privateDraft:"x"}));
+  await assertFails(setDoc(ref(admin(),publicationPath),{...publication(),publishedAt:Timestamp.fromMillis(1)}));
+  await assertFails(setDoc(ref(admin(),publicationPath),{...publication(),payload:""}));
+  await assertFails(deleteDoc(ref(admin(),publicationPath)));
+});

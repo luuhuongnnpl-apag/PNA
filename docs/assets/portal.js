@@ -1,6 +1,7 @@
 import {resourcePages, studentPages, categories, importance, cohorts, curricula, sampleNotices} from './portal-data.js?v=015';
 import {checkFile, extractText, getAttachment, removeAttachment, saveAttachment, suggestNotice} from './portal-files.js?v=015';
-import {createEditorial, validEditorial} from './editorial.js?v=016';
+import {createEditorial, validEditorial, renderBlocks} from './editorial.js?v=017';
+import {starterContent} from './starter-content.js?v=017';
 
 const el = id => document.getElementById(id);
 const editorial = createEditorial(el('editorial'));
@@ -26,6 +27,7 @@ let conductMode = 'student';
 let previousRoute = '';
 let renderId = 0;
 let renderedAdminUid = null;
+let publication = {pages: [], collections: []};
 
 function read(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
@@ -37,7 +39,13 @@ function studentData() { return read(studentKey(), {}); }
 function saveStudent(data) { localStorage.setItem(studentKey(), JSON.stringify(data)); }
 function admin() { return session.role === 'admin'; }
 function studentAccess() { return ['student', 'advisor', 'admin'].includes(session.role) && !!session.uid; }
-function resourceItems() { return [...resourcePages, ...read(navStorage, []).map(item => [item.id, item.title])]; }
+const pageRoute = key => resourcePages.some(([id]) => id === key) ? key : 'page-' + key;
+function resourceItems() {
+  const links = new Map(resourcePages);
+  for (const page of publication.pages) if (!page.parent) links.set(pageRoute(page.id), page.title);
+  for (const item of read(navStorage, [])) if (!links.has(item.id)) links.set(item.id, item.title);
+  return [...links];
+}
 
 function report(message, error = false) {
   const feedback = el('feedback');
@@ -92,6 +100,11 @@ function home() {
     <section class="card" aria-labelledby="archiveTitle">
       <h2 id="archiveTitle">Kho thông báo</h2>
       <div class="archive-grid">${archiveCards(items)}</div>
+    </section>
+    <section class="card" aria-labelledby="resourcesTitle">
+      <h2 id="resourcesTitle">Tài liệu và hướng dẫn</h2>
+      <div class="archive-grid">${resourceItems().map(([id, title]) =>
+        `<a class="archive-link" href="#${esc(id)}">${esc(title)}</a>`).join('')}</div>
     </section>`;
 }
 
@@ -124,10 +137,32 @@ function missing() {
 
 function resource(id, title) {
   const custom = read(navStorage, []).find(item => item.id === id);
-  const body = custom?.body || pending;
-  const curriculumInfo = id === 'curriculum' ? `<ul>${Object.entries(cohorts).map(([cohort, year]) =>
-    `<li>Khóa ${cohort} · CTĐT ${year}</li>`).join('')}</ul>` : '';
-  return card(title, `<p class="notice-body muted">${esc(body)}</p>${curriculumInfo}`);
+  const published = publication.pages.find(page => pageRoute(page.id) === id);
+  const pageId = published?.id || id;
+  const children = publication.pages.filter(page => page.parent === pageId);
+  const blocks = published?.blocks || starterContent(id);
+  const body = renderBlocks(blocks, publication.collections, true) ||
+    `<p class="notice-body muted">${esc(custom?.body || pending)}</p>`;
+  const parent = published?.parent && resourceItems().find(([key]) => key === pageRoute(published.parent));
+  const parentTitle = parent?.[1] || publication.pages.find(page => page.id === published?.parent)?.title;
+  return card(published?.title || title, `<div class="resource-content">
+    ${parentTitle ? `<p>${routeLink(pageRoute(published.parent), 'Về ' + parentTitle)}</p>` : ''}
+    ${body}
+    ${children.length ? `<h3>Trang con</h3><ul>${children.map(page => `<li>${routeLink(pageRoute(page.id), page.title)}</li>`).join('')}</ul>` : ''}
+  </div>`);
+}
+
+function publishedRow(route) {
+  const [collectionId, rowId] = route.split('/');
+  const collection = publication.collections.find(item => item.id === collectionId);
+  const row = collection?.rows.find(item => item.id === rowId);
+  if (!row) return missing();
+  return card(row.title, `<div class="resource-content">
+    <p class="muted">${esc(collection.title)}</p>
+    <dl>${collection.fields.filter(field => row.values[field.id]).map(field =>
+      `<dt><strong>${esc(field.title)}</strong></dt><dd>${esc(field.type === 'date' ? dateLabel(row.values[field.id]) : row.values[field.id])}</dd>`).join('')}</dl>
+    ${renderBlocks(row.blocks, publication.collections, true)}
+  </div>`);
 }
 
 function locked(title) {
@@ -355,11 +390,14 @@ function render({focus = false, cohort} = {}) {
     renderedAdminUid = null;
   }
   const resourceItem = resourceItems().find(([id]) => id === route);
+  const publishedPage = publication.pages.find(page => pageRoute(page.id) === route);
   const studentItem = studentPages.find(([id]) => id === route);
   if (route === 'home') content.innerHTML = home();
   else if (route.startsWith('archive/') && categories.some(([id]) => id === route.slice(8))) content.innerHTML = archive(route.slice(8));
   else if (route.startsWith('notice/')) content.innerHTML = notice(route.slice(7));
+  else if (route.startsWith('data/')) content.innerHTML = publishedRow(route.slice(5));
   else if (resourceItem) content.innerHTML = resource(...resourceItem);
+  else if (publishedPage) content.innerHTML = resource(route, publishedPage.title);
   else if (studentItem && !studentAccess()) content.innerHTML = locked(studentItem[1]);
   else if (route === 'profile') content.innerHTML = profile();
   else if (route === 'courses') content.innerHTML = courses(cohort ?? studentData().courseCohort ?? studentData().profile?.cohort ?? '');
@@ -666,6 +704,14 @@ function layoutObject(raw) {
 }
 
 window.PNA_LAYOUT = {
+  publication: () => admin() ? editorial.publication() : null,
+  showPublication(raw) {
+    const data = layoutObject(raw);
+    if (!validEditorial(data) || data.pages.some(page => page.status !== 'ready')) return false;
+    publication = data;
+    render();
+    return true;
+  },
   read(existing) {
     if (!admin()) return null;
     const previous = layoutObject(existing);

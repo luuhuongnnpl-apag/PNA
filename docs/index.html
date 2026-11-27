@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
   <title>Hệ thống cố vấn học tập | PNA</title>
-  <link rel="stylesheet" href="assets/portal.css?v=016">
-  <script type="module" src="assets/portal.js?v=016"></script>
-  <script type="module" src="assets/auth.js?v=016"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="assets/portal.css?v=017">
+  <script type="module" src="assets/portal.js?v=017"></script>
+  <script type="module" src="assets/auth.js?v=017"></script>
 </head>
 <body>
   <header class="top">
@@ -35,6 +36,12 @@
       <section id="admin" class="card" hidden>
         <h2 id="adminTitle" tabindex="-1">Quản trị</h2>
         <div id="editorial"></div>
+        <section class="admin-section" aria-labelledby="publishTitle">
+          <h3 id="publishTitle">Xuất bản trên Trang chủ</h3>
+          <p class="muted">Trang ở trạng thái Sẵn sàng sẽ xuất hiện trên web sau khi xuất bản. Kiểm tra nội dung và cơ sở dữ liệu đính kèm trước khi công khai.</p>
+          <button id="publishEditorial" type="button" hidden>Xuất bản trang sẵn sàng</button>
+          <p id="publicationStatus" role="status"></p>
+        </section>
         <details class="admin-section">
           <summary>Đồng bộ bản nháp</summary>
           <p class="muted">Bản nháp Firebase chỉ dành cho quản trị viên. Tải bản nháp trước khi soạn tiếp trên thiết bị khác.</p>
