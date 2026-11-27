@@ -14,8 +14,37 @@ function guard(){if(currentRole!=="admin"||!activeUser||!db)throw Error("Chỉ q
 async function list(){guard();const s=await getDocs(collection(db,"accessGrants"));if(currentRole!=="admin")return;const root=el("grantList");root.replaceChildren();for(const d of s.docs){const g=d.data(),row=document.createElement("div");row.className="doc";const txt=document.createElement("span");txt.textContent=d.id+" · "+g.role+" · "+(g.active?"Đang cấp":"Đã thu hồi")+" · Lớp: "+(g.classIds||[]).join(", ")+" · HP: "+(g.courseIds||[]).join(", ");const edit=document.createElement("button");edit.type="button";edit.textContent="Sửa";edit.onclick=()=>{el("grantEmail").value=d.id;el("grantRole").value=g.role;el("grantClasses").value=(g.classIds||[]).join(",");el("grantCourses").value=(g.courseIds||[]).join(",");el("grantExpiry").value=g.expiresAt?new Date(g.expiresAt.toMillis()+7*3600000).toISOString().slice(0,10):""};const revoke=document.createElement("button");revoke.type="button";revoke.textContent="Thu hồi";revoke.disabled=!g.active;revoke.onclick=async()=>{if(!confirm("Thu hồi quyền của tài khoản này?"))return;try{guard();await setDoc(doc(db,"accessGrants",d.id),{...g,active:false,updatedAt:serverTimestamp(),updatedBy:activeUser.uid});grantSay("Đã thu hồi.");await list()}catch(e){grantSay("Không thu hồi được: "+(e.code||e.message))}};row.append(txt,edit,revoke);root.append(row)}}
 el("grantForm").onsubmit=async e=>{e.preventDefault();try{guard();const email=el("grantEmail").value.trim().toLowerCase(),role=el("grantRole").value,classIds=codes(el("grantClasses").value),courseIds=codes(el("grantCourses").value),day=el("grantExpiry").value;if(!/^[^\s/@]+@[^\s/@]+\.[^\s/@]+$/.test(email)||email==="luuhuong.nnpl@gmail.com"||!validCodes(classIds)||!validCodes(courseIds)||!["advisor","student"].includes(role)||(role==="advisor"&&!classIds.length)||(role==="student"&&!courseIds.length))throw Error("Email hoặc phạm vi không hợp lệ.");const expiresAt=day?Timestamp.fromDate(new Date(day+"T00:00:00+07:00")):null;if(expiresAt&&expiresAt.toMillis()<=Date.now())throw Error("Ngày hết hiệu lực phải ở tương lai.");await setDoc(doc(db,"accessGrants",email),{role,classIds,courseIds,active:true,expiresAt,updatedAt:serverTimestamp(),updatedBy:activeUser.uid});grantSay("Đã lưu quyền.");await list()}catch(e){grantSay("Không lưu được: "+(e.code||e.message))}};
 el("grantReload").onclick=()=>list().catch(e=>grantSay("Không đọc được: "+(e.code||e.message)));
-el("builderCloudSave").onclick=async()=>{try{guard();if(!confirm("Lưu bản nháp danh mục riêng của quản trị viên vào Firebase?"))return;const user=activeUser;const ref=doc(db,"systemLayouts","adminDraft");await runTransaction(db,async transaction=>{const snapshot=await transaction.get(ref);if(activeUser?.uid!==user.uid||currentRole!=="admin")throw Error("Phiên quản trị đã thay đổi.");const payload=window.PNA_LAYOUT?.read(snapshot.data()?.payload);if(typeof payload!=="string"||new TextEncoder().encode(payload).length>500000)throw Error("Bản nháp vượt giới hạn.");transaction.set(ref,{payload,version:1,updatedAt:serverTimestamp(),updatedBy:user.uid});});el("builderStatus").textContent="Đã lưu bản nháp Firebase."}catch(e){el("builderStatus").textContent="Không lưu được Firebase: "+(e.code||e.message)}};
-el("builderCloudLoad").onclick=async()=>{try{guard();const snap=await getDoc(doc(db,"systemLayouts","adminDraft"));guard();if(!snap.exists())throw Error("Chưa có khung trên Firebase.");if(!confirm("Tải bản nháp danh mục từ Firebase?"))return;if(!window.PNA_LAYOUT?.load(snap.data().payload))throw Error("Khung không hợp lệ.");el("builderStatus").textContent="Đã tải khung Firebase."}catch(e){el("builderStatus").textContent="Không tải được: "+(e.code||e.message)}};
+el("builderCloudSave").onclick=async()=>{
+  try {
+    guard();
+    if(!confirm("Đồng bộ bản nháp riêng của quản trị viên lên Firebase?"))return;
+    const user=activeUser;
+    const ref=doc(db,"systemLayouts","adminDraft");
+    const saved=await runTransaction(db,async transaction=>{
+      const snapshot=await transaction.get(ref);
+      if(activeUser?.uid!==user.uid||currentRole!=="admin")throw Error("Phiên quản trị đã thay đổi.");
+      const payload=window.PNA_LAYOUT?.read(snapshot.data()?.payload);
+      if(typeof payload!=="string"||new TextEncoder().encode(payload).length>500000)throw Error("Bản nháp vượt giới hạn.");
+      transaction.set(ref,{payload,version:1,updatedAt:serverTimestamp(),updatedBy:user.uid});
+      return payload;
+    });
+    if(activeUser?.uid!==user.uid||currentRole!=="admin")return;
+    window.PNA_LAYOUT?.saved(saved);
+    el("builderStatus").textContent="Đã lưu bản nháp Firebase.";
+  }catch(e){el("builderStatus").textContent="Không lưu được Firebase: "+(e.code||e.message)}
+};
+el("builderCloudLoad").onclick=async()=>{
+  try {
+    guard();
+    const user=activeUser;
+    const snap=await getDoc(doc(db,"systemLayouts","adminDraft"));
+    if(activeUser?.uid!==user.uid||currentRole!=="admin")return;
+    if(!snap.exists())throw Error("Chưa có bản nháp trên Firebase.");
+    if(!confirm("Thay bản nháp trên trình duyệt này bằng bản Firebase?"))return;
+    if(!window.PNA_LAYOUT?.load(snap.data().payload))throw Error("Bản nháp không hợp lệ.");
+    el("builderStatus").textContent="Đã tải bản nháp Firebase.";
+  }catch(e){el("builderStatus").textContent="Không tải được Firebase: "+(e.code||e.message)}
+};
 try{
 const res=await fetch(new URL("../firebase-config.json",import.meta.url),{cache:"no-store"});if(!res.ok)throw Error("Chưa có cấu hình Firebase Web App");const config=await res.json();if(config.projectId!=="academic-advising-center"||!config.apiKey||!config.appId||!config.authDomain)throw Error("Cần cấu hình Web App của academic-advising-center");
 const app=initializeApp(config);auth=getAuth(app);db=getFirestore(app);el("authLogin").disabled=false;

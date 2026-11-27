@@ -1,7 +1,9 @@
 import {resourcePages, studentPages, categories, importance, cohorts, curricula, sampleNotices} from './portal-data.js?v=015';
 import {checkFile, extractText, getAttachment, removeAttachment, saveAttachment, suggestNotice} from './portal-files.js?v=015';
+import {createEditorial, validEditorial} from './editorial.js?v=016';
 
 const el = id => document.getElementById(id);
+const editorial = createEditorial(el('editorial'));
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 })[character]);
@@ -288,8 +290,8 @@ function activityForm(item = {}) {
 
 function adminContent() {
   el('adminContent').innerHTML = `
-    <section class="admin-section">
-      <h3>Danh mục Trang chủ</h3>
+    <details class="admin-section">
+      <summary>Danh mục hiển thị thử trên trình duyệt</summary>
       <form id="navForm" class="form-grid">
         <label>Tên mục<input name="title" required maxlength="100"></label>
         <label>Nội dung trang<textarea name="body" maxlength="5000"></textarea></label>
@@ -297,7 +299,7 @@ function adminContent() {
       </form>
       ${read(navStorage, []).map(item => `<div class="doc"><a href="#${esc(item.id)}">${esc(item.title)}</a>
         <button type="button" class="secondary danger" data-remove-nav="${esc(item.id)}">Gỡ mục</button></div>`).join('')}
-    </section>
+    </details>
     <section class="admin-section">
       <h3>Thông báo</h3>
       <p class="muted">Thông báo bạn thêm trong bản thử sẽ xuất hiện ở trang chủ và kho trên trình duyệt hiện tại.</p>
@@ -337,12 +339,16 @@ function render({focus = false, cohort} = {}) {
   el('adminButton').setAttribute('aria-pressed', String(showAdmin));
   if (showAdmin) {
     content.replaceChildren();
-    if (renderedAdminUid !== session.uid || routeChanged) adminContent();
+    if (renderedAdminUid !== session.uid || routeChanged) {
+      editorial.open(session.uid, read(navStorage, []));
+      adminContent();
+    }
     renderedAdminUid = session.uid;
     if (focus) el('adminTitle').focus();
     return;
   }
   if (renderedAdminUid && !admin()) {
+    editorial.close();
     el('adminContent').replaceChildren();
     el('grantForm').reset();
     el('builderStatus').textContent = '';
@@ -665,8 +671,9 @@ window.PNA_LAYOUT = {
     const previous = layoutObject(existing);
     const legacy = previous?.type === 'pna-portal' ? previous.legacy : previous;
     return JSON.stringify({type: 'pna-portal', navigation: read(navStorage, []),
-      legacy: legacy ?? read('pna-layout-v1', null)});
+      legacy: legacy ?? read('pna-layout-v1', null), editorial: editorial.forCloud(previous?.editorial)});
   },
+  saved(raw) { if (admin()) editorial.synced(layoutObject(raw)?.editorial); },
   load(raw) {
     if (!admin()) return false;
     const data = layoutObject(raw);
@@ -675,8 +682,10 @@ window.PNA_LAYOUT = {
       localStorage.setItem('pna-layout-v1', raw);
       return true;
     }
-    if (!safeNav(data.navigation)) return false;
+    if (!safeNav(data.navigation) || (data.editorial != null && !validEditorial(data.editorial))) return false;
     localStorage.setItem(navStorage, JSON.stringify(data.navigation));
+    editorial.open(session.uid, data.navigation);
+    if (data.editorial) editorial.load(data.editorial);
     adminContent();
     render();
     return true;

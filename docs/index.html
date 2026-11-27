@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
   <title>Hệ thống cố vấn học tập | PNA</title>
-  <link rel="stylesheet" href="assets/portal.css?v=015">
-  <script type="module" src="assets/portal.js?v=015"></script>
-  <script type="module" src="assets/auth.js?v=015"></script>
+  <link rel="stylesheet" href="assets/portal.css?v=016">
+  <script type="module" src="assets/portal.js?v=016"></script>
+  <script type="module" src="assets/auth.js?v=016"></script>
 </head>
 <body>
   <header class="top">
@@ -34,16 +34,17 @@
       <section id="content" aria-labelledby="pageTitle"></section>
       <section id="admin" class="card" hidden>
         <h2 id="adminTitle" tabindex="-1">Quản trị</h2>
-        <div id="adminContent"></div>
+        <div id="editorial"></div>
         <details class="admin-section">
-          <summary>Bản nháp danh mục</summary>
-          <p class="muted">Lưu hoặc tải lại bản nháp riêng của quản trị viên trên Firebase.</p>
+          <summary>Đồng bộ bản nháp</summary>
+          <p class="muted">Bản nháp Firebase chỉ dành cho quản trị viên. Tải bản nháp trước khi soạn tiếp trên thiết bị khác.</p>
           <div class="actions">
             <button id="builderCloudSave" type="button" hidden>Lưu bản nháp Firebase</button>
             <button id="builderCloudLoad" type="button" class="secondary" hidden>Tải bản nháp Firebase</button>
           </div>
           <p id="builderStatus" role="status"></p>
         </details>
+        <div id="adminContent"></div>
         <details class="admin-section">
           <summary>Tài khoản và phân quyền</summary>
           <p id="accessInfo"></p>
