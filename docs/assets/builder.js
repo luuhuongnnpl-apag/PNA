@@ -1,0 +1,59 @@
+"use strict";
+(()=>{
+const validLayout=function validLayout(d,base){
+ if(!d||d.version!==1||!d.pages||typeof d.pages!=="object"||Array.isArray(d.pages))return false;
+ const keys=Object.keys(d.pages);if(keys.length>150||!base.every(k=>Array.isArray(d.pages[k])))return false;
+ const all=new Set(keys),seen=new Set(),parents=new Map();let total=0;
+ const types=["page","module","link","heading","text"], colors=["navy","teal","slate","gold"];
+ for(const k of keys){if(!base.includes(k)&&!/^custom-[a-z0-9-]{1,80}$/.test(k))return false;const list=d.pages[k];if(!Array.isArray(list)||list.length>100)return false;
+ for(const x of list){if(++total>500||!x||typeof x.id!=="string"||!/^b-[a-z0-9-]{1,80}$/.test(x.id)||seen.has(x.id)||!types.includes(x.type)||typeof x.title!=="string"||!x.title.trim()||x.title.length>160||typeof x.body!=="string"||x.body.length>5000||![1,2].includes(x.width)||!colors.includes(x.color)||typeof x.target!=="string"||x.target.length>2000)return false;seen.add(x.id);
+ if(x.type==="module"&&!base.includes(x.target))return false;
+ if(x.type==="link"){try{let u=new URL(x.target);if(u.protocol!=="https:"||u.username||u.password)return false}catch{return false}}
+ if(x.type==="page"){if(!all.has(x.target)||base.includes(x.target)||parents.has(x.target))return false;parents.set(x.target,k)}
+ }}
+ for(const k of keys){if(base.includes(k))continue;let cur=k,walk=new Set();while(!base.includes(cur)){if(walk.has(cur)||!parents.has(cur))return false;walk.add(cur);cur=parents.get(cur)}}
+ return true;
+};
+const moveBlock=function moveBlock(list,id,to){const from=list.findIndex(x=>x.id===id);if(from<0||!Number.isInteger(to)||to<0||to>=list.length)return list.slice();const result=list.slice();result.splice(to,0,result.splice(from,1)[0]);return result};
+const base=PNA_MODULES.flatMap(g=>g.items),baseIds=base.map(x=>x[0]),key="pna-layout-v1";
+const uid=prefix=>prefix+(globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+"-"+Math.random().toString(36).slice(2));
+const make=(type,title,body="",target="",width=1,color="navy")=>({id:uid("b-"),type,title,body,target,width,color});
+function defaults(){const pages=Object.fromEntries(baseIds.map(id=>[id,[]]));pages.home=[["governance","Quản trị hệ thống","Tổ chức và thẩm quyền"],["life","Quản trị vòng đời","Khóa, lớp, học kỳ"],["flow","Điểm rèn luyện","Phiếu và luồng xét duyệt"],["docs","Kho tài liệu","Tải lên và tải xuống"],["news","Tiếp nhận thông tin","Nguồn và yêu cầu xử lý"],["personal","Không gian cá nhân","Hành trình và kế hoạch"]].map(([id,t,d])=>make("module",t,d,id));return {version:1,pages}}
+let model=defaults(),editing=false,current="home",selected=null,dragId=null,storageError=false;
+try{const saved=localStorage.getItem(key);if(saved){const d=JSON.parse(saved);if(validLayout(d,baseIds))model=d;else storageError=true}}catch{storageError=true}
+const el=id=>document.getElementById(id);
+function node(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n}
+function btn(label,fn,cls="secondary"){const n=node("button",cls,label);n.type="button";n.onclick=fn;return n}
+function parentOf(id){for(const [p,arr] of Object.entries(model.pages)){const b=arr.find(x=>x.type==="page"&&x.target===id);if(b)return {p,b}}return null}
+function status(msg){el("builderStatus").textContent=msg}
+function save(next){if(!validLayout(next,baseIds)){status("Khung không hợp lệ hoặc vượt giới hạn. Chưa lưu thay đổi.");return false}model=next;try{localStorage.setItem(key,JSON.stringify(model));storageError=false;status("Đã lưu bản nháp trên trình duyệt.")}catch{storageError=true;status("Không lưu được trên thiết bị. Hãy xuất JSON trước khi đóng trang.")}return true}
+function mutate(fn){const next=JSON.parse(JSON.stringify(model));fn(next);if(save(next))draw()}
+function go(id){show(id)}
+const host=node("div","builder-host");host.id="builderHost";
+const custom=node("section","panel");custom.id="builderCustom";custom.hidden=true;
+const customTitle=node("h1"),customDesc=node("p","muted"),back=btn("← Trang cha",()=>go(parentOf(current)?.p||"home"));custom.append(node("div","eyebrow","TRANG TỰ XÂY DỰNG"),customTitle,customDesc,back);document.querySelector(".workspace").append(custom);
+const originalShow=show;
+show=function(page,updateHash=true){if(!baseIds.includes(page)&&!Object.prototype.hasOwnProperty.call(model.pages,page))page="home";current=page;if(baseIds.includes(page)){originalShow(page,updateHash);custom.hidden=true}else{const ref=parentOf(page);if(!ref){return show("home",updateHash)}document.querySelectorAll(".workspace > section").forEach(s=>s.hidden=s!==custom);document.querySelectorAll("[data-page]").forEach(b=>b.setAttribute("aria-current","false"));customTitle.textContent=ref.b.title;customDesc.textContent=ref.b.body||"Trang thiết kế mới";el("crumb").textContent="Trang chủ / "+ref.b.title;el("pageStage").textContent="Trang tự xây dựng";el("pageStage").classList.add("planned");el("pageDescription").textContent=ref.b.body||"Khung nội dung do bạn tạo.";if(updateHash&&location.hash!=="#"+page)history.pushState(null,"","#"+page)}draw()};
+function openEditor(block){if(!editing)return;selected=block?.id||null;el("builderDialogTitle").textContent=block?"Sửa ô nội dung":"Thêm ô nội dung";el("blockType").value=block?.type||"page";el("blockType").disabled=!!block;el("blockTitle").value=block?.title||"";el("blockBody").value=block?.body||"";el("blockWidth").value=String(block?.width||1);el("blockColor").value=block?.color||"navy";el("blockModule").value=block?.type==="module"?block.target:"life";el("blockLink").value=block?.type==="link"?block.target:"";el("blockError").textContent="";toggleFields();el("builderDialog").showModal()}
+function toggleFields(){const t=el("blockType").value;el("moduleField").hidden=t!=="module";el("linkField").hidden=t!=="link"}
+function removePage(pages,id){for(const child of pages[id]||[])if(child.type==="page")removePage(pages,child.target);delete pages[id]}
+function remove(block){if(!confirm(block.type==="page"?"Xóa ô và tất cả trang con do bạn tạo?":"Xóa ô này khỏi khung?"))return;mutate(d=>{d.pages[current]=d.pages[current].filter(x=>x.id!==block.id);if(block.type==="page")removePage(d.pages,block.target)})}
+function draw(){const section=baseIds.includes(current)?el(current):custom;if(!section)return;const homeGrid=el("home").querySelector(".quick-grid");if(homeGrid)homeGrid.hidden=true;host.replaceChildren();const bar=node("div","builder-bar");bar.append(node("h2",null,current==="home"?"Không gian làm việc tùy chỉnh":"Khung nội dung bổ sung"));if(editing)bar.append(btn("+ Thêm ô",()=>openEditor(),"builder-primary"));host.append(bar);const hint=node("p","muted",editing?"Kéo thả để sắp xếp hoặc dùng nút lên/xuống. Bản nháp riêng trên trình duyệt.":"Các ô có thể mở trang, liên kết hoặc chứa ghi chú. Bật Xây dựng khung để chỉnh sửa.");host.append(hint);
+ const grid=node("div","builder-grid"),arr=model.pages[current]||[];
+ for(const [index,b] of arr.entries()){const card=node("article","builder-block builder-"+b.type+" tone-"+b.color+(b.width===2||b.type==="heading"?" wide":""));if(editing){card.draggable=true;card.ondragstart=e=>{dragId=b.id;e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",b.id)};card.ondragover=e=>{if(dragId&&dragId!==b.id){e.preventDefault();card.classList.add("dragover")}};card.ondragleave=()=>card.classList.remove("dragover");card.ondragend=()=>{dragId=null;card.classList.remove("dragover")};card.ondrop=e=>{e.preventDefault();card.classList.remove("dragover");if(dragId){const id=dragId;dragId=null;mutate(d=>{d.pages[current]=moveBlock(d.pages[current],id,index)})}}}
+ const title=node(b.type==="heading"?"h3":"h4",null,b.title);card.append(title);if(b.body)card.append(node("p","block-body",b.body));
+ if(b.type==="page"||b.type==="module")card.append(btn(b.type==="page"?"Mở trang →":"Mở phân hệ →",()=>go(b.target),"block-open"));if(b.type==="link"){const a=node("a","block-open","Mở liên kết ↗");a.href=b.target;a.target="_blank";a.rel="noopener noreferrer";card.append(a)}
+ if(editing){const tools=node("div","block-tools");const up=btn("↑",()=>mutate(d=>{d.pages[current]=moveBlock(d.pages[current],b.id,index-1)}));up.disabled=index===0;up.setAttribute("aria-label","Di chuyển lên");const down=btn("↓",()=>mutate(d=>{d.pages[current]=moveBlock(d.pages[current],b.id,index+1)}));down.disabled=index===arr.length-1;down.setAttribute("aria-label","Di chuyển xuống");tools.append(up,down,btn("Sửa",()=>openEditor(b)),btn("Xóa",()=>remove(b)));card.append(tools)}grid.append(card)}
+ if(editing){const add=btn("+ Thêm ô mới",()=>openEditor(),"builder-add");grid.append(add)}else if(!arr.length)grid.append(node("p","muted","Chưa có ô bổ sung."));host.append(grid);
+ if(current==="home"){const anchor=section.querySelector(".quick-grid");if(anchor){const preceding=anchor.previousElementSibling;if(preceding?.tagName==="H2")preceding.hidden=true;anchor.after(host)}else section.append(host)}else section.append(host);
+ el("builderToggle").textContent=editing?"Thoát xây dựng":"Xây dựng khung";el("builderToggle").setAttribute("aria-pressed",String(editing));el("builderTools").hidden=!editing;
+}
+for(const [id,title] of base){const o=node("option",null,title);o.value=id;el("blockModule").append(o)}
+el("builderToggle").onclick=()=>{editing=!editing;draw()};el("blockType").onchange=toggleFields;el("blockCancel").onclick=()=>el("builderDialog").close();
+el("blockForm").onsubmit=e=>{e.preventDefault();const type=el("blockType").value,title=el("blockTitle").value.trim(),body=el("blockBody").value.trim(),width=Number(el("blockWidth").value),color=el("blockColor").value;let target=type==="module"?el("blockModule").value:type==="link"?el("blockLink").value.trim():"";if(!title){el("blockError").textContent="Nhập tên ô.";return}if(type==="link"){try{const u=new URL(target);if(u.protocol!=="https:"||u.username||u.password)throw Error();target=u.href}catch{el("blockError").textContent="Chỉ chấp nhận liên kết HTTPS hợp lệ.";return}}
+const next=JSON.parse(JSON.stringify(model)),arr=next.pages[current],old=arr.find(x=>x.id===selected);if(old){if(type==="page")target=old.target;Object.assign(old,{title,body,width,color,target})}else{if(type==="page"){target=uid("custom-");next.pages[target]=[]}arr.push(make(type,title,body,target,width,color))}if(save(next)){el("builderDialog").close();draw()}else el("blockError").textContent="Không lưu được thay đổi: kiểm tra giới hạn khung."};
+el("builderExport").onclick=()=>{const u=URL.createObjectURL(new Blob([JSON.stringify(model,null,2)],{type:"application/json"})),a=node("a");a.href=u;a.download="PNA-khung-thiet-ke.json";a.click();setTimeout(()=>URL.revokeObjectURL(u),2000);status("Đã tạo tệp JSON để gửi hoặc sao lưu.")};
+el("builderImport").onclick=()=>el("builderFile").click();el("builderFile").onchange=async()=>{const f=el("builderFile").files[0];el("builderFile").value="";if(!f)return;if(f.size>3*1024*1024){status("Tệp JSON quá lớn.");return}try{const d=JSON.parse(await f.text());if(!validLayout(d,baseIds))throw Error();if(!confirm("Thay bản nháp trên trình duyệt bằng khung trong tệp?"))return;if(save(d))go(baseIds.includes(current)||Object.hasOwn(d.pages,current)?current:"home")}catch{status("Tệp không đúng cấu trúc PNA. Bản hiện tại được giữ nguyên.")}};
+el("builderReset").onclick=()=>{if(confirm("Khôi phục khung mẫu? Hãy xuất JSON trước nếu muốn giữ bản nháp.")){if(save(defaults()))go("home")}};
+status(storageError?"Không đọc được bản nháp đã lưu. Có thể nhập lại JSON.":"Bản nháp riêng trên trình duyệt; chưa đồng bộ Firebase.");show(location.hash.slice(1)||"home",false);
+})();
