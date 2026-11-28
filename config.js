@@ -15,7 +15,7 @@ window.PNA_CONFIG = {
   // OAuth client web (Google Cloud của dự án PNA → APIs & Services → Credentials) — gia hạn quyền Drive ngầm
   CLIENT_ID: "452607831007-ncfpp17hv2iqs44u4psd15jjh12qh5op.apps.googleusercontent.com",
   // Khóa API đọc thư mục Drive đã chia sẻ "Bất kỳ ai có đường liên kết"; giới hạn theo luuhuongnnpl-apag.github.io
-  DRIVE_KEY: "",
+  DRIVE_KEY: "AIzaSyAxQjnPsTH00x6CIZj8_0hI_Kh7XkPtFFQ",
   // Dự án riêng chưa có tài khoản quản trị email/mật khẩu chung; quản trị đăng nhập bằng Google
   ADMIN_UID: "",
   ADMIN_EMAILS: ["luuhuong.dhnv@gmail.com", "luuhuong.nnpl@gmail.com"],

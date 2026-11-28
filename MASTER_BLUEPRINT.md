@@ -29,7 +29,7 @@ Quy chế – quy định đào tạo · Chương trình đào tạo · Kế ho�
 ## 5. Lộ trình triển khai từng phần
 | Phần | Nội dung | Trạng thái |
 |---|---|---|
-| 1 | Kho tài liệu CVHT theo khung PND: giao diện, danh mục, nhập liệu, phân quyền, mã truy cập, Hỏi AI | Mã nguồn xong 28/11; chờ cấu hình Firebase PNA |
+| 1 | Kho tài liệu CVHT theo khung PND: giao diện, danh mục, nhập liệu, phân quyền, mã truy cập, Hỏi AI | Đã cấu hình Firebase academic-advising-center, Drive (28/11); Hỏi AI chờ App Check |
 | 2 | Nạp nội dung: quy chế đào tạo, CTĐT, kế hoạch năm học, biểu mẫu hiện hành (kiểm tra hiệu lực văn bản) | Chưa làm |
 | 3 | Lớp – khóa: danh sách lớp CVHT phụ trách, cán bộ lớp, thông báo theo lớp kèm xác nhận đã đọc | Chưa làm — cần duyệt quy chế dữ liệu sinh viên |
 | 4 | Lịch học vụ và nhắc việc (đăng ký học phần, thi, học bổng, rèn luyện) theo khóa | Chưa làm |
