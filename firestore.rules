@@ -168,6 +168,9 @@ service cloud.firestore {
     // pna_hoso/{mã SV}: quản trị, Lãnh đạo Khoa đọc tất cả; cố vấn học tập đọc, cập nhật hồ sơ lớp mình;
     // sinh viên đọc hồ sơ của chính mình (theo mã SV trong pna_sv/{email}). Họ tên, ngày sinh, lớp, cố vấn chỉ quản trị sửa.
     function ownHoso(id) { return isSv() && get(svPath()).data.mssv == id; }
+    // Ban cán sự lớp: sinh viên có chức vụ trong hồ sơ, cùng lớp
+    function myHoso() { return get(/databases/$(database)/documents/pna_hoso/$(get(svPath()).data.mssv)).data; }
+    function isBcsOf(lop) { return isSv() && myHoso().lop == lop && myHoso().get('chucVu', '') != ''; }
     match /pna_hoso/{id} {
       allow get: if signedIn() && (isAdmin() || inNd('khoa') || me() in resource.data.get('cvht', []) || ownHoso(id));
       allow list: if signedIn() && (isAdmin() || inNd('khoa') || me() in resource.data.get('cvht', []));
@@ -175,12 +178,26 @@ service cloud.firestore {
       allow update: if isAdmin() || (me() in resource.data.get('cvht', [])
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['trangThai', 'sdt', 'emailLienHe', 'queQuan', 'chucVu', 'chucVuNam', 'suKien', 'drl', 'email', 'hocTap', 'updated', 'by']))
         // sinh viên tự đánh dấu tiến độ học tập theo CTĐT
-        || (ownHoso(id) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hocTap', 'updated', 'by']));
+        || (ownHoso(id) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hocTap', 'drlTu', 'updated', 'by']));
+      // Phong trào: sinh viên kê khai; ban cán sự cùng lớp hoặc CVHT xác nhận
+      match /hoatdong/{a} {
+        allow read: if signedIn() && (isAdmin() || inNd('khoa') || me() in get(/databases/$(database)/documents/pna_hoso/$(id)).data.get('cvht', []) || ownHoso(id) || isBcsOf(get(/databases/$(database)/documents/pna_hoso/$(id)).data.lop));
+        allow create: if ownHoso(id) && request.resource.data.tt == 'cho' && request.resource.data.mssv == id
+          && request.resource.data.lop == get(/databases/$(database)/documents/pna_hoso/$(id)).data.lop;
+        allow update: if (ownHoso(id) && resource.data.tt != 'ok' && request.resource.data.tt == 'cho' && request.resource.data.mssv == id && request.resource.data.lop == resource.data.lop)
+          || ((isAdmin() || me() in resource.data.get('cvht', []) || (isBcsOf(resource.data.lop) && !ownHoso(id)))
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tt', 'xn']));
+        allow delete: if isAdmin() || me() in resource.data.get('cvht', []) || (ownHoso(id) && resource.data.tt != 'ok');
+      }
       // Ghi chú nội bộ của cố vấn học tập: sinh viên không xem được
       match /noibo/{n} {
         allow read, write: if signedIn() && (isAdmin()
           || me() in get(/databases/$(database)/documents/pna_hoso/$(id)).data.get('cvht', []));
       }
+    }
+    // Truy vấn chung kê khai phong trào (ban cán sự, CVHT xem kê khai chờ xác nhận của lớp)
+    match /{path=**}/hoatdong/{a} {
+      allow read: if signedIn() && (isAdmin() || inNd('khoa') || me() in resource.data.get('cvht', []) || isBcsOf(resource.data.lop) || (isSv() && resource.data.mssv == get(svPath()).data.mssv));
     }
     match /pna_ctdt/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
 

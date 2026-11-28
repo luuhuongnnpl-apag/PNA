@@ -7,7 +7,7 @@
    Firestore: pna_hoso/{mssv} (+ /noibo/{id}: ghi chú chỉ cán bộ xem) · pna_lop/{mã lớp} · pna_ctdt/{mã}
    Dữ liệu cá nhân KHÔNG đưa lên kho mã GitHub: quản trị nhập tệp JSON ở trang “Nhập dữ liệu sinh viên”.
    ===================================================================== */
-import { doc, getDoc, setDoc, addDoc, deleteDoc, collection, getDocs, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
+import { doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, collectionGroup, getDocs, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
 import { THU_TUC } from "./thutuc-data.js?v=20261128v";
 
 const P = window.PNA, db = P.db, esc = P.esc;
@@ -207,7 +207,7 @@ async function renderLop(id) {
     } catch (e) { err.textContent = "Chưa lưu được: " + e.message; b.disabled = false; }
   };
 }
-const xepLoai = d => d == null ? "KĐG" : d >= 90 ? "Xuất sắc" : d >= 80 ? "Tốt" : d >= 65 ? "Khá" : d >= 50 ? "Trung bình" : d >= 35 ? "Yếu" : "Kém";
+const xepLoai = d => d == null ? "KĐG" : d >= 90 ? "Xuất sắc" : d >= 80 ? "Tốt" : d >= 70 ? "Khá" : d >= 50 ? "Trung bình" : "Yếu";   // TT 40/2026/TT-BGDĐT
 async function syncLop(id, patch) {
   const snap = await getDocs(query(collection(db, "pna_hoso"), where("lop", "==", id))), refs = [];
   snap.forEach(d => refs.push(d.ref));
@@ -223,131 +223,297 @@ function csv(name, rows) {
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([t], { type: "text/csv;charset=utf-8" })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
-/* ---------- Hồ sơ một sinh viên ---------- */
-async function renderSv(mssv) {
+/* ---------- Hồ sơ một sinh viên: 3 cột (thông tin · nội dung theo mục · tóm tắt) ----------
+   Mục: HỌC TẬP (bảng tổng + theo học kỳ, nối cùng dữ liệu) · RÈN LUYỆN (phiếu theo TT 40/2026/TT-BGDĐT) ·
+   PHONG TRÀO (sinh viên kê khai, ban cán sự / CVHT xác nhận) · THỦ TỤC – DỊCH VỤ CÔNG (đơn đã gửi, kết quả).
+   Điểm: Quy chế đào tạo đại học của Học viện (QĐ 2567-QĐ/HVHCQTC ngày 09/3/2026), Điều 10, 11. */
+const TABS = [["hoc-tap", "HỌC TẬP", "📘"], ["ren-luyen", "RÈN LUYỆN", "🏅"], ["phong-trao", "PHONG TRÀO", "🎯"], ["thu-tuc", "THỦ TỤC – DỊCH VỤ CÔNG", "📄"]];
+const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+const r1 = x => Math.round(x * 10 + 1e-9) / 10, r2 = x => Math.round(x * 100 + 1e-9) / 100;
+const numOf = v => (v === "" || v == null || isNaN(+v)) ? null : +v;
+/* Điểm học phần: điểm nhập trực tiếp, hoặc TX 10% + ĐK 30% + Thi 60% (Điều 10 khoản 1, 5) */
+function diemHP(v) {
+  if (!v) return null;
+  const d = numOf(v.diem); if (d != null) return d;
+  const tx = numOf(v.tx), dk = numOf(v.dk), thi = numOf(v.thi);
+  if (thi == null) return null;
+  if (tx == null && dk == null) return thi;
+  return r1((tx || 0) * 0.1 + (dk || 0) * 0.3 + thi * 0.6);
+}
+const CHU = [[9, "A+", 4], [8.5, "A", 3.7], [8, "B+", 3.5], [7, "B", 3], [6.5, "C+", 2.5], [5.5, "C", 2], [5, "D+", 1.5], [4, "D", 1], [0, "F", 0]];
+const chuOf = d => d == null ? null : CHU.find(c => d >= c[0]);
+const hocLuc = g => g == null ? "" : g >= 3.6 ? "Xuất sắc" : g >= 3.2 ? "Giỏi" : g >= 2.5 ? "Khá" : g >= 2 ? "Trung bình" : g >= 1 ? "Yếu" : "Kém";
+const trinhDo = tc => tc < 32 ? "Năm thứ nhất" : tc <= 65 ? "Năm thứ hai" : tc <= 98 ? "Năm thứ ba" : tc <= 130 ? "Năm thứ tư" : "Năm thứ năm";
+const legacyPass = v => !!v && (v.tt === "qua" || v.tt === "cai-thien");
+/* Một học phần đã đạt (tích lũy): có điểm ≥ 4,0 (học phần điều kiện: ≥ 5,0 — loại P), hoặc đánh dấu đạt kiểu cũ */
+function datHP(h, v) {
+  if (!v) return false;
+  if (v.ctl) return false;
+  const d = diemHP(v);
+  if (d == null) return legacyPass(v);
+  return h.loai === "DK" ? d >= 5 : d >= 4;
+}
+/* Tổng hợp theo học kỳ của CTĐT và tích lũy */
+function hocTapTH(ct, ht) {
+  ht = ht || {}; const plan = ct.keHoach || [], hk = {};
+  let tcTL = 0, sum4 = 0, sum10 = 0, tcTLg = 0, chua = 0;
+  for (const h of plan) {
+    const v = ht[h.k], d = diemHP(v), tc = +h.tc || 0, H = hk[h.hk] = hk[h.hk] || { tc: 0, s4: 0, s10: 0, dat: 0, f: 0, n: 0 };
+    if (h.loai === "DK") continue;
+    if (d != null) { const c = chuOf(d); H.tc += tc; H.s4 += c[2] * tc; H.s10 += d * tc; H.n++; if (d < 4) { H.f += tc; chua++; } }
+    else if (v && v.tt === "chua") chua++;
+    if (datHP(h, v)) { tcTL += tc; H.dat += tc; if (d != null) { tcTLg += tc; sum4 += chuOf(d)[2] * tc; sum10 += d * tc; } }
+  }
+  Object.values(hk).forEach(H => { H.g4 = H.tc ? r2(H.s4 / H.tc) : null; H.g10 = H.tc ? r2(H.s10 / H.tc) : null; });
+  const tong = +ct.tongTC || (ct.hocKy || []).reduce((n, h) => n + (+h.tc || 0), 0);
+  return { hk, tcTL, tong, chua, g4: tcTLg ? r2(sum4 / tcTLg) : null, g10: tcTLg ? r2(sum10 / tcTLg) : null };
+}
+function tienDo(ct, ht) { const t = hocTapTH(ct, ht); return { qua: t.tcTL, chua: t.chua, tong: t.tong, g4: t.g4 }; }
+const kyOfHk = (khoa, hk) => { const y = (+khoa || 0) + Math.floor((hk - 1) / 2); return `${y}-${y + 1}_${(hk - 1) % 2 + 1}`; };
+const hkOfKy = (khoa, ky) => { const [y, n] = ky.split("_"); return (+y.split("-")[0] - (+khoa)) * 2 + (+n); };
+const hkNow = khoa => { const n = namThu(khoa); return n ? Math.min(10, (n - 1) * 2 + (kyNow().endsWith("_1") ? 1 : 2)) : 0; };
+
+/* Rèn luyện — Thông tư 40/2026/TT-BGDĐT (hiệu lực 30/6/2026): 5 nhóm, thang 100 */
+const DRL_N = [
+  ["n1", "Chấp hành pháp luật và nội quy, quy chế của nhà trường", 25],
+  ["n2", "Tinh thần, thái độ trong học tập (tham gia học tập, NCKH, kỳ thi; vượt khó)", 20],
+  ["n3", "Hoạt động chính trị - xã hội, văn hóa, văn nghệ, thể thao, tình nguyện, phòng chống tội phạm", 20],
+  ["n4", "Trách nhiệm công dân trong quan hệ cộng đồng", 15],
+  ["n5", "Cán bộ lớp, đoàn thể; thành tích NCKH, cuộc thi, khen thưởng", 20]];
+const xlDrl = d => d == null ? "" : d >= 90 ? "Xuất sắc" : d >= 80 ? "Tốt" : d >= 70 ? "Khá" : d >= 50 ? "Trung bình" : "Yếu";
+
+/* Phong trào: điểm gợi ý (tạm tính, chờ quy định chi tiết của Học viện) */
+const HD_NHOM = { n3: "Chính trị - xã hội, văn hóa, văn nghệ, thể thao, tình nguyện", n4: "Công dân với cộng đồng (tuyên truyền, hoạt động xã hội được biểu dương)", n5: "Cán bộ lớp, đoàn thể; NCKH, cuộc thi, khen thưởng" };
+const HD_CAP = { lop: ["Lớp / chi đoàn", 2], khoa: ["Khoa", 3], hv: ["Học viện", 4], ngoai: ["Ngoài Học viện (địa phương, toàn quốc)", 5] };
+const HD_VT = { tg: ["Tham gia", 0], tc: ["Ban tổ chức / cán bộ", 2], giai: ["Đạt giải, được khen thưởng", 3] };
+const HD_TT = { cho: ["Chờ xác nhận", "#92400e", "#fef3c7"], ok: ["Đã xác nhận", "#1b6e3a", "#e3f4e8"], no: ["Không xác nhận", "#b3261e", "#fbe6e4"] };
+const hdDiem = a => (HD_CAP[a.cap] || [0, 0])[1] + (HD_VT[a.vaiTro] || [0, 0])[1];
+const kyOfDate = d => { const m = /^(\d{4})-(\d{2})/.exec(d || ""); if (!m) return ""; const y = +m[1], mo = +m[2]; return mo >= 8 ? `${y}-${y + 1}_1` : `${y - 1}-${y}_2`; };
+function hdTong(acts, ky) {
+  const out = { n3: 0, n4: 0, n5: 0 };
+  acts.filter(a => a.tt === "ok" && (!ky || a.ky === ky)).forEach(a => { if (out[a.nhom] != null) out[a.nhom] += hdDiem(a); });
+  out.n3 = Math.min(20, out.n3); out.n4 = Math.min(15, out.n4); out.n5 = Math.min(20, out.n5);
+  return out;
+}
+const DON_TT = { "cho-duyet": "Đang xử lý", "bo-sung": "Cần bổ sung", "da-duyet": "Đã duyệt", "tu-choi": "Không duyệt", "rut": "Đã rút", "nhap": "Bản nháp" };
+
+/* Trang hồ sơ chiếm toàn bộ chiều rộng (ẩn 2 cột bên của trang chủ) */
+function fullPage(on) { document.body.classList.toggle("hs-full", !!on); }
+window.addEventListener("hashchange", () => { const h = decodeURIComponent(location.hash.slice(1)); if (!(h.startsWith("sv/") && !h.startsWith("sv/lop/"))) fullPage(false); });
+
+async function renderSv(mssv, tab) {
   await loadMe();
   const own = ME.sv && ME.sv.mssv === mssv;
   if (!isStaff() && !own) return deny("Hồ sơ sinh viên");
-  let s, lop = null, ct = null, notes = [], dons = [];
+  let s, lop = null, ct = null, notes = [], dons = [], acts = [];
   try { const d = await getDoc(doc(db, "pna_hoso", mssv)); if (!d.exists()) return page("Hồ sơ " + esc(mssv), `<p class="empty">${own ? "Hồ sơ của bạn chưa được nhập vào hệ thống. Liên hệ cố vấn học tập." : "Không tìm thấy hồ sơ hoặc bạn không quản lý sinh viên này."}</p>`, isStaff() ? [["sv", "Hồ sơ sinh viên"], [null, mssv]] : null); s = { id: d.id, ...d.data() }; }
   catch (e) { return page("Hồ sơ " + esc(mssv), `<p class="empty">Bạn không có quyền xem hồ sơ này.</p>`); }
-  const edit = canEdit(s);
+  const edit = canEdit(s), self = own || edit;
   await Promise.all([
     getDoc(doc(db, "pna_lop", s.lop)).then(x => { if (x.exists()) lop = x.data(); }).catch(() => {}),
     edit ? getDocs(collection(db, "pna_hoso", mssv, "noibo")).then(q => q.forEach(x => notes.push({ id: x.id, ...x.data() }))).catch(() => {}) : null,
-    loadDons(s, own).then(x => dons = x).catch(() => {})
+    loadDons(s, own).then(x => dons = x).catch(() => {}),
+    getDocs(collection(db, "pna_hoso", mssv, "hoatdong")).then(q => q.forEach(x => acts.push({ id: x.id, ...x.data() }))).catch(() => {})
   ]);
   const ctId = s.ctdt || (lop && lop.ctdt);
   if (ctId) { try { const x = await getDoc(doc(db, "pna_ctdt", ctId)); if (x.exists()) ct = { id: x.id, ...x.data() }; } catch (e) {} }
-  const ks = kyList(s.khoa), cur = kyNow(), sk = (s.suKien || []).slice().sort((a, b) => String(a.ngay || a.namHoc || "").localeCompare(String(b.ngay || b.namHoc || "")));
-  const kyOf = e => { if (e.ngay) { const [y, m] = e.ngay.split("-").map(Number); return m >= 8 ? `${y}-${y + 1}_1` : `${y - 1}-${y}_2`; } return e.namHoc ? e.namHoc + "_1" : ""; };
-  /* Hành trình: từng năm học, 2 học kỳ, kết quả rèn luyện và sự kiện */
-  const years = [];
-  for (let i = 0; i < ks.length; i += 2) years.push([ks[i], ks[i + 1]]);
-  const cell = k => { const d = (s.drl || {})[k], ev = sk.filter(e => kyOf(e) === k); const past = k <= cur;
-    return `<div class="hs-ky${k === cur ? " now" : ""}${past ? "" : " fut"}"><div class="hs-kyh">${esc(kyName(k).split(" · ")[0])}${k === cur ? " <em>hiện tại</em>" : ""}</div>
-      ${d ? `<div class="hs-kyd">Rèn luyện: <b>${d.diem ?? "—"}</b> ${xlChip(d.xepLoai)}${d.ghiChu ? `<small>${esc(d.ghiChu)}</small>` : ""}</div>` : past ? `<div class="hs-kyd muted">Chưa có kết quả rèn luyện</div>` : ""}
-      ${ev.map(e => `<div class="hs-kye">• ${esc((SK[e.loai] || SK.khac)[0])}${e.soQD ? " — QĐ " + esc(e.soQD) : ""}</div>`).join("")}</div>`; };
-  const journey = years.map(([a, b], i) => `<div class="hs-year"><div class="hs-yh">Năm thứ ${i + 1}<small>${esc(a.split("_")[0].replace("-", "–"))}</small></div>${cell(a)}${cell(b)}</div>`).join("");
+  tab = TABS.some(t => t[0] === tab) ? tab : "hoc-tap";
+  const V = { s, lop, ct, notes, dons, acts, own, edit, self, tab, hk: null, view: "tong" };
+  fullPage(true);
+  drawSv(V);
+}
+function drawSv(V) {
+  const { s, lop, ct, edit } = V;
+  const th = ct ? hocTapTH(ct, s.hocTap) : null;
+  const lastK = Object.keys(s.drl || {}).sort().pop();
   const info = [["Mã sinh viên", s.mssv], ["Ngày sinh", fmtD(s.ngaySinh)], ["Lớp", s.lop + (lop && lop.ten ? " — " + lop.ten : "")], ["Ngành", s.nganh], ["Khóa", s.khoa ? s.khoa + (namThu(s.khoa) ? ` (năm thứ ${namThu(s.khoa)})` : "") : ""], ["Hệ đào tạo", s.he],
-    ["Chức vụ", s.chucVu ? s.chucVu + (s.chucVuNam ? " (" + s.chucVuNam.replace("-", "–") + ")" : "") : ""], ["Điện thoại", s.sdt], ["Email liên hệ", s.emailLienHe], ["Quê quán", s.queQuan], ["Tài khoản PNA", s.email ? P.showName(s.email) : "Chưa cấp"], ["Cố vấn học tập", (s.cvht || []).map(P.showName).join(", ") || "Chưa gán"]];
-  const ttLinks = THU_TUC.filter(t => t.active !== false);
-  const donRows = dons.map(d => `<tr class="tt-row" data-go="tt-don/${esc(d.id)}"><td><b>${esc(d.ma || "")}</b></td><td>${esc(d.ttTen || "")}</td><td>${esc(fmtD(String(d.created || "").slice(0, 10)))}</td><td>${esc(({ "cho-duyet": "Đang xử lý", "bo-sung": "Cần bổ sung", "da-duyet": "Đã duyệt", "tu-choi": "Không duyệt", "rut": "Đã rút" })[d.status] || d.status || "")}</td></tr>`).join("");
-  page(esc(s.hoTen), `
-    <div class="hs-head"><div class="hs-av">${esc((s.ten || s.hoTen || "?").slice(0, 1))}</div><div><div class="hs-name">${esc(s.hoTen)} ${chip(s.trangThai)}</div><div class="muted">${esc(s.mssv)} · Lớp ${esc(s.lop)} · ${esc(s.nganh || "")} · Khóa ${esc(s.khoa || "")}</div></div>
-      ${edit ? `<div class="hs-act"><button type="button" class="btn" id="svEdit">✎ Sửa thông tin</button><button type="button" class="btn primary" id="svEv">＋ Ghi nhận sự kiện</button></div>` : ""}</div>
-    <div class="hs-info">${info.map(([a, b]) => `<div><span>${a}</span><b>${esc(b || "—")}</b></div>`).join("")}</div>
-    <h3 class="hs-sub">Hành trình học tập</h3><div class="hs-journey">${journey || `<p class="muted">Chưa xác định khóa học.</p>`}</div>
-    <div class="hs-two">
-      <div class="sbox"><h3 class="sbox-title">QUÁ TRÌNH — SỰ KIỆN</h3>${sk.length ? `<ol class="tt-hist hs-ev">${sk.slice().reverse().map((e, i) => `<li><b>${esc((SK[e.loai] || SK.khac)[0])}</b> <span class="muted">${esc(e.ngay ? fmtD(e.ngay) : (e.namHoc || "").replace("-", "–"))}</span><br>${esc(e.noiDung || "")}${e.nguon ? `<br><small class="muted">Nguồn: ${esc(e.nguon)}</small>` : ""}${edit ? ` <button type="button" class="linkish" data-evdel="${sk.length - 1 - i}">Xóa</button>` : ""}</li>`).join("")}</ol>` : `<p class="muted">Chưa có sự kiện.</p>`}</div>
-      <div class="sbox"><h3 class="sbox-title">KẾT QUẢ RÈN LUYỆN</h3>${Object.keys(s.drl || {}).length ? `<table class="adm-table"><thead><tr><th>Học kỳ</th><th class="c">Điểm</th><th>Xếp loại</th></tr></thead><tbody>${Object.keys(s.drl).sort().reverse().map(k => `<tr><td>${esc(kyName(k))}${s.drl[k].ghiChu ? `<br><small class="muted">${esc(s.drl[k].ghiChu)}</small>` : ""}</td><td class="c">${s.drl[k].diem ?? "—"}</td><td>${xlChip(s.drl[k].xepLoai)}</td></tr>`).join("")}</tbody></table>` : `<p class="muted">Chưa có kết quả.</p>`}
-        ${edit ? `<button type="button" class="sbtn" id="svDrl">Nhập / sửa kết quả rèn luyện</button>` : ""}</div>
-    </div>
-    <div class="sbox hs-ctbox"><h3 class="sbox-title">TIẾN ĐỘ HỌC TẬP THEO CHƯƠNG TRÌNH ĐÀO TẠO</h3>${ct ? `<div id="hsCt"></div>` : `<p class="muted">Chưa gán chương trình đào tạo cho lớp ${esc(s.lop)}.${isAdmin() ? ` Gán ở <a href="#sv/lop/${esc(s.lop)}">trang lớp</a>.` : ""}</p>`}</div>
-    <div class="hs-two">
-      <div class="sbox"><h3 class="sbox-title">THỦ TỤC — DỊCH VỤ CÔNG</h3>${donRows ? `<div class="tbl-wrap"><table class="adm-table"><tbody>${donRows}</tbody></table></div>` : `<p class="muted">Chưa có đơn nào.</p>`}
-        ${own ? `<div class="tt-links" style="margin-top:8px">${ttLinks.map(t => `<a href="#tt/${esc(t.key)}"><span class="tt-dot"></span>${esc(t.ten)}</a>`).join("")}</div>` : ""}</div>
-    </div>
-    ${edit ? `<div class="sbox hs-noibo"><h3 class="sbox-title">GHI CHÚ CỦA CỐ VẤN HỌC TẬP <small class="muted">(chỉ cán bộ xem)</small></h3>
-      ${notes.sort((a, b) => String(b.at).localeCompare(String(a.at))).map(n => `<div class="hs-note"><small class="muted">${esc(fmtD(String(n.at).slice(0, 10)))} · ${esc(P.showName(n.by || ""))}</small><p>${esc(n.noiDung)}</p><button type="button" class="linkish" data-notedel="${esc(n.id)}">Xóa</button></div>`).join("") || `<p class="muted">Chưa có ghi chú.</p>`}
-      <textarea id="noteIn" rows="2" class="fld-sel" placeholder="Ghi chú tình hình học tập, gia đình, tư vấn đã thực hiện…"></textarea><button type="button" class="btn" id="noteAdd" style="margin-top:6px">Lưu ghi chú</button></div>` : ""}`,
+    ["Chức vụ", s.chucVu ? s.chucVu + (s.chucVuNam ? " (" + s.chucVuNam.replace("-", "–") + ")" : "") : ""], ["Điện thoại", s.sdt], ["Email liên hệ", s.emailLienHe], ["Quê quán", s.queQuan], ["Tài khoản", s.email ? P.showName(s.email) : "Chưa cấp"], ["Cố vấn học tập", (s.cvht || []).map(P.showName).join(", ") || "Chưa gán"]].filter(r => r[1]);
+  const sk = (s.suKien || []).slice().sort((a, b) => String(b.ngay || b.namHoc || "").localeCompare(String(a.ngay || a.namHoc || "")));
+  const left = `<div class="hs-card"><div class="hs-av">${esc((s.ten || s.hoTen || "?").slice(0, 1))}</div><div class="hs-name">${esc(s.hoTen)}</div><div>${chip(s.trangThai)}</div>
+      <dl class="hs-dl">${info.map(([a, b]) => `<dt>${a}</dt><dd>${esc(b)}</dd>`).join("")}</dl>
+      ${edit ? `<div class="hs-act"><button type="button" class="btn sm" id="svEdit">✎ Sửa thông tin</button><button type="button" class="btn sm primary" id="svEv">＋ Sự kiện</button></div>` : ""}</div>
+    <nav class="hs-tabs">${TABS.map(([k, n, ic]) => `<a href="#sv/${esc(s.mssv)}/${k}" class="${V.tab === k ? "on" : ""}"><span>${ic}</span>${n}</a>`).join("")}</nav>`;
+  const yrs = []; const ks = kyList(s.khoa); for (let i = 0; i < ks.length; i += 2) yrs.push([ks[i], ks[i + 1]]);
+  const mini = yrs.map(([a, b], i) => `<div class="hs-my"><b>Năm ${i + 1}</b>${[a, b].map(k => { const hk = hkOfKy(s.khoa, k), H = th && th.hk[hk], d = (s.drl || {})[k]; return `<span class="${k === kyNow() ? "now" : ""}" title="${esc(kyName(k))}">HK${ROMAN[hk]}: ${H && H.g4 != null ? H.g4.toFixed(2) : "—"} · ĐRL ${d && d.diem != null ? d.diem : "—"}</span>`; }).join("")}</div>`).join("");
+  const right = `<div class="sbox"><h3 class="sbox-title">TÓM TẮT</h3>
+      ${th ? `<div class="hs-kpi"><div><b>${th.tcTL}<small>/${th.tong}</small></b><span>Tín chỉ tích lũy</span></div><div><b>${th.g4 != null ? th.g4.toFixed(2) : "—"}</b><span>TBC tích lũy (thang 4)</span></div></div>
+      <div class="hs-bar"><span style="width:${th.tong ? Math.min(100, th.tcTL * 100 / th.tong) : 0}%"></span></div>
+      <p class="hs-sm">Học lực: <b>${hocLuc(th.g4) || "—"}</b> · Trình độ: <b>${trinhDo(th.tcTL)}</b>${th.chua ? `<br><span style="color:#b3261e">${th.chua} học phần chưa đạt — cần học lại</span>` : ""}</p>` : `<p class="muted">Chưa gán chương trình đào tạo.</p>`}
+      <p class="hs-sm">Rèn luyện gần nhất: ${lastK ? `<b>${s.drl[lastK].diem ?? "—"}</b> ${xlChip(s.drl[lastK].xepLoai)} <small class="muted">(${esc(kyName(lastK))})</small>` : "—"}</p></div>
+    <div class="sbox"><h3 class="sbox-title">HÀNH TRÌNH</h3><div class="hs-mini">${mini || `<p class="muted">—</p>`}</div></div>
+    <div class="sbox"><h3 class="sbox-title">SỰ KIỆN</h3>${sk.length ? `<ol class="tt-hist hs-ev">${sk.slice(0, 12).map(e => { const i = (s.suKien || []).indexOf(e); return `<li><b>${esc((SK[e.loai] || SK.khac)[0])}</b> <span class="muted">${esc(e.ngay ? fmtD(e.ngay) : (e.namHoc || "").replace("-", "–"))}</span><br>${esc(e.noiDung || "")}${edit ? ` <button type="button" class="linkish" data-evdel="${i}">Xóa</button>` : ""}</li>`; }).join("")}</ol>` : `<p class="muted">Chưa có sự kiện.</p>`}</div>
+    ${edit ? `<div class="sbox hs-noibo"><h3 class="sbox-title">GHI CHÚ CỦA CVHT <small class="muted">(chỉ cán bộ xem)</small></h3>
+      ${V.notes.sort((a, b) => String(b.at).localeCompare(String(a.at))).map(n => `<div class="hs-note"><small class="muted">${esc(fmtD(String(n.at).slice(0, 10)))} · ${esc(P.showName(n.by || ""))}</small><p>${esc(n.noiDung)}</p><button type="button" class="linkish" data-notedel="${esc(n.id)}">Xóa</button></div>`).join("") || `<p class="muted">Chưa có ghi chú.</p>`}
+      <textarea id="noteIn" rows="2" class="fld-sel" placeholder="Tình hình học tập, gia đình, tư vấn đã thực hiện…"></textarea><button type="button" class="btn sm" id="noteAdd" style="margin-top:6px">Lưu ghi chú</button></div>` : ""}`;
+  const mid = V.tab === "ren-luyen" ? tabRL(V, th) : V.tab === "phong-trao" ? tabPT(V) : V.tab === "thu-tuc" ? tabTT(V) : tabHT(V, th);
+  page(esc(s.hoTen), `<div class="hs3"><aside class="hs3-l">${left}</aside><section class="hs3-m">${mid}</section><aside class="hs3-r">${right}</aside></div>`,
     isStaff() ? [["sv", "Hồ sơ sinh viên"], ["sv/lop/" + s.lop, s.lop], [null, s.hoTen]] : null);
-  if (ct) mountCt(ct, s, edit || own);
-  if (!edit) return;
-  const save = async (patch, msg) => { await setDoc(doc(db, "pna_hoso", s.mssv), { ...patch, updated: nowISO(), by: myEmail() }, { merge: true }); P.logAct("HOSO", s.mssv + " · " + msg); reset(); P.toast("Đã lưu.", "ok"); renderSv(s.mssv); };
-  $("#svEv").onclick = () => evDialog(s, save);
-  $("#svEdit").onclick = () => editDialog(s, save);
-  $("#svDrl").onclick = () => drlDialog(s, save);
-  document.querySelectorAll("[data-evdel]").forEach(b => b.onclick = async () => {
-    const i = +b.dataset.evdel; if (!await P.ask("Xóa sự kiện “" + ((SK[sk[i].loai] || SK.khac)[0]) + "” khỏi hồ sơ?")) return;
-    const list = sk.filter((_, j) => j !== i); try { await save({ suKien: list }, "xóa sự kiện"); } catch (e) { P.toast(e.message, "err"); }
-  });
-  $("#noteAdd").onclick = async () => { const t = $("#noteIn").value.trim(); if (!t) return; try { await addDoc(collection(db, "pna_hoso", s.mssv, "noibo"), { noiDung: t, at: nowISO(), by: myEmail() }); renderSv(s.mssv); } catch (e) { P.toast("Chưa lưu được: " + e.message, "err"); } };
-  document.querySelectorAll("[data-notedel]").forEach(b => b.onclick = async () => { if (!await P.ask("Xóa ghi chú này?")) return; try { await deleteDoc(doc(db, "pna_hoso", s.mssv, "noibo", b.dataset.notedel)); renderSv(s.mssv); } catch (e) { P.toast(e.message, "err"); } });
+  bindSv(V);
 }
-/* ---------- Tiến độ học tập theo CTĐT ----------
-   pna_hoso/{mssv}.hocTap = { <khóa học phần>: { tt: "qua" | "chua" | "cai-thien" | "", gc: ghi chú, at, by } }
-   Sinh viên tự đánh dấu, cố vấn học tập theo dõi và sửa được; học phần tự chọn in nghiêng. */
-const HT = [["qua", "Đã qua"], ["chua", "Chưa qua"], ["cai-thien", "Đã học cải thiện"]];
-const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
-const passed = v => !!v && (v.tt === "qua" || v.tt === "cai-thien");
-function tienDo(ct, ht) {
-  let qua = 0, chua = 0, ctn = 0; ht = ht || {};
-  (ct.keHoach || []).forEach(h => { const v = ht[h.k]; if (h.loai !== "DK" && passed(v)) qua += +h.tc || 0; if (v && v.tt === "chua") chua++; if (v && v.tt === "cai-thien") ctn++; });
-  return { qua, chua, ctn, tong: +ct.tongTC || (ct.hocKy || []).reduce((n, h) => n + (+h.tc || 0), 0) };
-}
-const hkNow = khoa => { const n = namThu(khoa); return n ? Math.min(10, (n - 1) * 2 + (kyNow().endsWith("_1") ? 1 : 2)) : 0; };
-function ctdtHTML(ct, s, ed) {
-  const ht = s.hocTap || {}, plan = ct.keHoach || [], byCode = {}; plan.forEach(h => { if (h.ma) byCode[h.ma] = h; });
-  const t = tienDo(ct, ht), now = hkNow(s.khoa), pct = t.tong ? Math.min(100, Math.round(t.qua * 100 / t.tong)) : 0;
+
+/* ---- HỌC TẬP ---- */
+function tabHT(V, th) {
+  const { s, ct, self } = V;
+  if (!ct) return `<div class="sbox"><h3 class="sbox-title">HỌC TẬP</h3><p class="muted">Chưa gán chương trình đào tạo cho lớp ${esc(s.lop)}.${isAdmin() ? ` Gán ở <a href="#sv/lop/${esc(s.lop)}">trang lớp</a>.` : ""}</p></div>`;
+  const plan = ct.keHoach || [], ht = s.hocTap || {}, now = hkNow(s.khoa);
   const hks = [...new Set([...(ct.hocKy || []).map(h => +h.hk), ...plan.map(h => +h.hk)])].sort((a, b) => a - b);
-  const sec = hk => {
-    const meta = (ct.hocKy || []).find(h => +h.hk === hk) || {}, rows = plan.filter(h => +h.hk === hk);
-    const quaHk = rows.filter(h => h.loai !== "DK" && passed(ht[h.k])).reduce((n, h) => n + (+h.tc || 0), 0);
-    let lastG = "", i = 0;
-    const body = rows.map(h => {
-      let g = "";
-      if ((h.nhom || "") !== lastG) { lastG = h.nhom || ""; if (lastG) g = `<tr class="hs-grp"><td></td><td colspan="7"><i>${esc(lastG)}</i></td></tr>`; }
-      const v = ht[h.k] || {}, tc = h.loai === "TC";
-      const miss = !passed(v) ? (h.tq || []).filter(c => byCode[c] && !passed(ht[byCode[c].k]) && ((ht[byCode[c].k] || {}).tt === "chua" || +h.hk <= now + 1)) : [];
-      return g + `<tr class="${tc ? "tc" : ""}${h.loai === "DK" ? " dk" : ""}${v.tt ? " st-" + v.tt : ""}" title="${v.at ? "Cập nhật " + esc(fmtD(String(v.at).slice(0, 10))) + " bởi " + esc(P.showName(v.by || "")) : ""}">
-        <td class="c">${++i}</td><td class="hs-ma">${esc(h.ma || "—")}</td>
-        <td>${tc ? `<i>${esc(h.ten)}</i>` : esc(h.ten)}${h.loai === "DK" ? ` <small class="muted">(điều kiện, không tính tích lũy)</small>` : ""}${h.ghiChu && h.loai !== "DK" ? `<br><small class="muted">${esc(h.ghiChu)}</small>` : ""}${(h.tq || []).length ? `<br><small class="muted">Tiên quyết: ${esc(h.tq.join(", "))}</small>` : ""}${miss.length ? `<br><small class="hs-warn">⚠ Chưa qua học phần tiên quyết: ${esc(miss.map(c => byCode[c].ten).join("; "))}</small>` : ""}</td>
-        <td class="c">${esc(h.tc)}</td>
-        ${HT.map(([k, n]) => `<td class="hs-ck${ed ? " ed" : ""}" data-k="${esc(h.k)}" data-tt="${k}" title="${n}"><span class="hs-box b-${k}${v.tt === k ? " on" : ""}">${v.tt === k ? "✓" : ""}</span></td>`).join("")}
-        <td>${ed ? `<input class="hs-gc" data-k="${esc(h.k)}" value="${esc(v.gc || "")}" placeholder="Ghi chú…">` : esc(v.gc || "")}</td></tr>`;
-    }).join("");
-    return `<details class="hs-hk${hk === now ? " now" : ""}"${hk <= now + 1 || !now ? " open" : ""}><summary><b>Học kỳ ${ROMAN[hk] || hk}</b> · ${esc(meta.tc || rows.reduce((n, h) => n + (h.loai === "BB" ? +h.tc || 0 : 0), 0))} tín chỉ${meta.ghiChu ? ` <span class="muted">(${esc(meta.ghiChu)})</span>` : ""}${hk === now ? ` <em>học kỳ hiện tại</em>` : ""}<span class="hs-hkq">Đã qua ${quaHk} TC</span></summary>
-      <div class="tbl-wrap"><table class="adm-table hs-ct"><thead><tr><th class="c">STT</th><th>Mã HP</th><th>Tên học phần</th><th class="c">TC</th><th class="c v">Đã qua</th><th class="c v">Chưa qua</th><th class="c v">Đã học cải thiện</th><th>Ghi chú tình trạng</th></tr></thead><tbody>${body}</tbody></table></div></details>`;
-  };
-  return `<p style="margin:0 0 6px"><b>${esc(ct.ten || ct.id)}</b>${ct.link ? ` · <a href="${esc(ct.link)}" target="_blank" rel="noopener">Văn bản CTĐT ↗</a>` : ""}${ct.ghiChu ? `<br><small class="muted">${esc(ct.ghiChu)}</small>` : ""}</p>
-    <div class="hs-prog"><div class="hs-bar"><span style="width:${pct}%"></span></div><b>${t.qua}/${t.tong} tín chỉ tích lũy (${pct}%)</b>${t.chua ? ` · <span style="color:#b3261e">${t.chua} học phần chưa qua — cần đăng ký học lại</span>` : ""}${t.ctn ? ` · ${t.ctn} học phần đã học cải thiện` : ""}</div>
-    <p class="muted" style="margin:4px 0 10px">${ed ? "Bấm vào ô để đánh dấu tình trạng từng học phần (bấm lại để bỏ); ghi chú lưu khi rời ô. " : ""}Học phần <i>in nghiêng</i> là học phần tự chọn — chỉ học đủ số tín chỉ của nhóm. Đối chiếu học phần tiên quyết trước khi đăng ký.</p>
-    ${hks.map(sec).join("")}`;
+  if (V.hk == null) V.hk = Math.max(1, Math.min(now || 1, hks[hks.length - 1] || 1));
+  const byCode = {}; plan.forEach(h => { if (h.ma) byCode[h.ma] = h; });
+  const inp = (h, f, v, w) => self ? `<input class="hs-in" data-k="${esc(h.k)}" data-f="${f}" value="${esc(v ?? "")}" inputmode="decimal"${w ? ` style="width:${w}px"` : ""}>` : esc(v ?? "");
+  const ck = (h, f, v, t) => `<label class="hs-tick" title="${t}"><input type="checkbox" data-k="${esc(h.k)}" data-f="${f}"${v ? " checked" : ""}${self ? "" : " disabled"}></label>`;
+  const rowsOf = hk => { let lastG = "", i = 0; return plan.filter(h => +h.hk === hk).map(h => {
+    let g = ""; if ((h.nhom || "") !== lastG) { lastG = h.nhom || ""; if (lastG) g = `<tr class="hs-grp"><td></td><td colspan="14"><i>${esc(lastG)}</i></td></tr>`; }
+    const v = ht[h.k] || {}, d = diemHP(v), c = chuOf(d), tc = h.loai === "TC", dk = h.loai === "DK";
+    const st = d == null ? (legacyPass(v) ? ["Đạt", "ok"] : v.tt === "chua" ? ["Chưa đạt", "f"] : ["", ""]) : dk ? (d >= 5 ? ["Đạt (P)", "ok"] : ["Chưa đạt", "f"]) : d >= 4 ? ["Đạt", "ok"] : ["Chưa đạt (F)", "f"];
+    const miss = !datHP(h, v) ? (h.tq || []).filter(cd => byCode[cd] && !datHP(byCode[cd], ht[byCode[cd].k]) && (+h.hk <= now + 1)) : [];
+    return g + `<tr class="${tc ? "tc" : ""}${dk ? " dk" : ""}${st[1] ? " st-" + st[1] : ""}">
+      <td class="c">${++i}</td><td class="hs-ma">${esc(h.ma || "—")}</td>
+      <td class="hs-ten">${tc ? `<i>${esc(h.ten)}</i>` : esc(h.ten)}${dk ? ` <small class="muted">(điều kiện)</small>` : ""}${(h.tq || []).length ? `<br><small class="muted">Tiên quyết: ${esc(h.tq.join(", "))}</small>` : ""}${miss.length ? `<br><small class="hs-warn">⚠ Chưa đạt HP tiên quyết: ${esc(miss.map(cd => byCode[cd].ten).join("; "))}</small>` : ""}</td>
+      <td class="c">${esc(h.tc)}</td>
+      <td class="c">${inp(h, "tx", v.tx, 44)}</td><td class="c">${inp(h, "dk", v.dk, 44)}</td><td class="c">${inp(h, "thi", v.thi, 44)}</td>
+      <td class="c hs-d">${self ? `<input class="hs-in b" data-k="${esc(h.k)}" data-f="diem" value="${esc(v.diem ?? "")}" placeholder="${d != null && numOf(v.diem) == null ? d : ""}" inputmode="decimal" style="width:48px">` : (d ?? "")}</td>
+      <td class="c"><b>${dk ? (d == null ? "" : d >= 5 ? "P" : "F") : c ? c[1] : ""}</b></td><td class="c">${!dk && c ? c[2].toFixed(1) : ""}</td>
+      <td class="c hs-st ${st[1]}">${st[0]}</td>
+      <td class="c">${ck(h, "ct", v.ct || v.tt === "cai-thien", "Đã học cải thiện")}</td><td class="c">${ck(h, "bs", v.bs, "Học lại / bổ sung")}</td><td class="c">${ck(h, "ctl", v.ctl, "Chưa tích lũy")}</td>
+      <td>${self ? `<input class="hs-gc" data-k="${esc(h.k)}" data-f="gc" value="${esc(v.gc || "")}" placeholder="Ghi chú…">` : esc(v.gc || "")}</td></tr>`; }).join(""); };
+  const head = `<thead><tr><th class="c" rowspan="2">STT</th><th rowspan="2">Mã HP</th><th rowspan="2">Tên học phần</th><th class="c" rowspan="2">TC</th><th class="c" colspan="4">Điểm (thang 10)</th><th class="c" colspan="2">Quy đổi</th><th class="c" rowspan="2">Tình trạng</th><th class="c" colspan="3">Đánh dấu</th><th rowspan="2">Ghi chú</th></tr>
+    <tr><th class="c v">TX<br>10%</th><th class="c v">Định kỳ<br>30%</th><th class="c v">Thi<br>60%</th><th class="c v">Điểm HP</th><th class="c v">Chữ</th><th class="c v">Thang 4</th><th class="c v">Cải thiện</th><th class="c v">Học lại / bổ sung</th><th class="c v">Chưa tích lũy</th></tr></thead>`;
+  const sumRow = hk => { const H = th.hk[hk] || {}; const k = kyOfHk(s.khoa, hk), d = (s.drl || {})[k];
+    return `<div class="hs-hksum"><span>TB học kỳ: <b>${H.g4 != null ? H.g4.toFixed(2) : "—"}</b> (thang 4) · <b>${H.g10 != null ? H.g10.toFixed(2) : "—"}</b> (thang 10)</span><span>Học lực: <b>${hocLuc(H.g4) || "—"}</b></span><span>Tín chỉ đạt: <b>${H.dat || 0}</b>${H.f ? ` · <span style="color:#b3261e">${H.f} TC chưa đạt</span>` : ""}</span><span>Rèn luyện: <b>${d && d.diem != null ? d.diem : "—"}</b> ${d ? xlChip(d.xepLoai) : ""}</span></div>`; };
+  const sec = (hk, open) => { const meta = (ct.hocKy || []).find(h => +h.hk === hk) || {}; const k = kyOfHk(s.khoa, hk);
+    return `<details class="hs-hk${hk === now ? " now" : ""}"${open ? " open" : ""}><summary><b>Năm thứ ${Math.ceil(hk / 2)} · Học kỳ ${ROMAN[hk] || hk}</b> <span class="muted">${esc(k.split("_")[0].replace("-", "–"))} · ${esc(meta.tc || "")} tín chỉ${meta.ghiChu ? " · " + esc(meta.ghiChu) : ""}</span>${hk === now ? ` <em>học kỳ hiện tại</em>` : ""}<span class="hs-hkq">TB ${(th.hk[hk] || {}).g4 != null ? th.hk[hk].g4.toFixed(2) : "—"} · đạt ${(th.hk[hk] || {}).dat || 0} TC</span></summary>
+      ${sumRow(hk)}<div class="tbl-wrap"><table class="adm-table hs-ct">${head}<tbody>${rowsOf(hk)}</tbody></table></div></details>`; };
+  const body = V.view === "ky"
+    ? `<div class="hs-kysel">${hks.map(hk => `<button type="button" class="${hk === V.hk ? "on" : ""}${hk === now ? " now" : ""}" data-hk="${hk}">HK ${ROMAN[hk]}<small>${esc(kyOfHk(s.khoa, hk).split("_")[0].replace("-", "–"))}</small></button>`).join("")}</div>${sec(V.hk, true)}`
+    : hks.map(hk => sec(hk, true)).join("");
+  return `<div class="sbox"><h3 class="sbox-title">HỌC TẬP — ${esc(ct.ten || ct.id)}</h3>
+    <div class="hs-sw"><button type="button" data-htview="tong" class="${V.view === "tong" ? "on" : ""}">Bảng tổng toàn khóa</button><button type="button" data-htview="ky" class="${V.view === "ky" ? "on" : ""}">Xem theo học kỳ</button></div>
+    <p class="muted hs-sm">${self ? "Nhập điểm thành phần (TX 10%, định kỳ 30%, thi 60%) để tự tính điểm học phần, hoặc nhập thẳng điểm học phần; dữ liệu tự lưu. " : ""}Quy đổi theo Điều 10, 11 Quy chế đào tạo đại học của Học viện (QĐ 2567-QĐ/HVHCQTC): A+ 4,0 · A 3,7 · B+ 3,5 · B 3,0 · C+ 2,5 · C 2,0 · D+ 1,5 · D 1,0 · F 0. Học phần <i>in nghiêng</i> là tự chọn; học phần điều kiện (GDTC, GDQP-AN) chỉ xét đạt (P ≥ 5,0), không tính điểm trung bình.</p>
+    ${body}</div>`;
 }
-function mountCt(ct, s, ed) {
-  const box = $("#hsCt"); if (!box) return;
-  const draw = () => {
-    const open = [...box.querySelectorAll("details.hs-hk")].map(d => d.open);
-    box.innerHTML = ctdtHTML(ct, s, ed);
-    if (open.length) box.querySelectorAll("details.hs-hk").forEach((d, i) => { if (open[i] !== undefined) d.open = open[i]; });
-  };
-  const put = async (k, patch) => {
-    const v = { ...((s.hocTap || {})[k] || {}), ...patch, at: nowISO(), by: myEmail() };
+
+/* ---- RÈN LUYỆN ---- */
+function tabRL(V, th) {
+  const { s, edit, own, acts } = V;
+  const ks = kyList(s.khoa).filter(k => k <= kyNow());
+  if (!V.ky || !ks.includes(V.ky)) V.ky = ks[ks.length - 1] || kyNow();
+  const k = V.ky, hk = hkOfKy(s.khoa, k), H = th && th.hk[hk], tu = ((s.drlTu || {})[k]) || {}, off = (s.drl || {})[k] || {}, ch = off.chiTiet || {}, goiY = hdTong(acts, k);
+  const sum = o => DRL_N.reduce((n, [c]) => n + (numOf(o[c]) || 0), 0);
+  const years = {}; Object.keys(s.drl || {}).forEach(x => { const y = x.split("_")[0]; (years[y] = years[y] || []).push(numOf(s.drl[x].diem)); });
+  const yAvg = Object.entries(years).map(([y, a]) => { const v = a.filter(x => x != null); return [y, v.length ? r1(v.reduce((p, q) => p + q, 0) / v.length) : null]; }).sort();
+  const yv = yAvg.map(x => x[1]).filter(x => x != null), toan = yv.length ? r1(yv.reduce((p, q) => p + q, 0) / yv.length) : null;
+  return `<div class="sbox"><h3 class="sbox-title">RÈN LUYỆN</h3>
+    <div class="hs-kysel">${ks.map(x => `<button type="button" data-ky="${x}" class="${x === k ? "on" : ""}">HK ${ROMAN[hkOfKy(s.khoa, x)]}<small>${esc(x.split("_")[0].replace("-", "–"))}</small></button>`).join("")}</div>
+    <div class="hs-hksum"><span>Kết quả học tập kỳ này: <b>${H && H.g4 != null ? H.g4.toFixed(2) : "—"}</b> (thang 4) · học lực <b>${H ? hocLuc(H.g4) || "—" : "—"}</b></span><span>Tín chỉ đạt: <b>${H ? H.dat : 0}</b>${H && H.f ? ` · <span style="color:#b3261e">${H.f} TC chưa đạt</span>` : ""}</span><span>Phong trào đã xác nhận: <b>${goiY.n3 + goiY.n4 + goiY.n5}</b> điểm gợi ý</span></div>
+    <div class="tbl-wrap"><table class="adm-table hs-rl"><thead><tr><th>Nhóm tiêu chí (Thông tư 40/2026/TT-BGDĐT)</th><th class="c">Tối đa</th><th class="c">Gợi ý từ phong trào</th><th class="c">Sinh viên tự đánh giá</th><th class="c">CVHT / Hội đồng</th></tr></thead><tbody>
+      ${DRL_N.map(([c, n, m]) => `<tr><td>${esc(n)}</td><td class="c">${m}</td><td class="c">${goiY[c] != null ? goiY[c] : ""}</td>
+        <td class="c">${own ? `<input class="hs-in" data-rl="tu" data-c="${c}" data-max="${m}" value="${esc(tu[c] ?? "")}" style="width:56px">` : esc(tu[c] ?? "")}</td>
+        <td class="c">${edit ? `<input class="hs-in" data-rl="cv" data-c="${c}" data-max="${m}" value="${esc(ch[c] ?? tu[c] ?? "")}" style="width:56px">` : esc(ch[c] ?? "")}</td></tr>`).join("")}
+      <tr class="hs-tot"><td><b>Tổng điểm</b></td><td class="c">100</td><td class="c">${goiY.n3 + goiY.n4 + goiY.n5}</td><td class="c"><b id="rlTu">${sum(tu) || ""}</b> <small>${xlDrl(sum(tu) || null)}</small></td><td class="c"><b>${off.diem ?? ""}</b> ${xlChip(off.xepLoai)}</td></tr>
+    </tbody></table></div>
+    ${own ? `<div class="dlg-act" style="justify-content:flex-start"><label class="fld" style="flex:1;margin:0"><input id="rlNote" placeholder="Giải trình, minh chứng (nếu có)…" value="${esc(tu.gc || "")}"></label><button type="button" class="btn primary" id="rlTuSave">Gửi tự đánh giá</button></div>${tu.at ? `<p class="muted hs-sm">Đã gửi ${esc(fmtD(String(tu.at).slice(0, 10)))}.</p>` : ""}` : ""}
+    ${edit ? `<div class="dlg-act" style="justify-content:flex-start"><label class="fld" style="flex:1;margin:0"><input id="rlCvNote" placeholder="Nhận xét của CVHT / Hội đồng…" value="${esc(off.ghiChu || "")}"></label><button type="button" class="btn primary" id="rlCvSave">Chốt kết quả kỳ này</button></div>${tu.gc ? `<p class="hs-sm"><b>Giải trình của sinh viên:</b> ${esc(tu.gc)}</p>` : ""}` : ""}
+    <p class="muted hs-sm">Xếp loại theo Thông tư 40/2026/TT-BGDĐT: Xuất sắc ≥ 90 · Tốt 80–89 · Khá 70–79 · Trung bình 50–69 · Yếu &lt; 50. Điểm năm học = trung bình các kỳ; toàn khóa = trung bình các năm. Cột “gợi ý” cộng từ hoạt động đã được ban cán sự / CVHT xác nhận (tạm tính, chờ quy định chi tiết của Học viện).</p>
+    <h4 class="hs-h4">Kết quả rèn luyện các kỳ</h4>
+    <table class="adm-table"><thead><tr><th>Học kỳ</th><th class="c">Điểm</th><th>Xếp loại</th><th>Ghi chú</th></tr></thead><tbody>${Object.keys(s.drl || {}).sort().map(x => `<tr><td>${esc(kyName(x))}</td><td class="c">${s.drl[x].diem ?? "—"}</td><td>${xlChip(s.drl[x].xepLoai)}</td><td class="muted">${esc(s.drl[x].ghiChu || "")}</td></tr>`).join("") || `<tr><td colspan="4" class="muted">Chưa có.</td></tr>`}</tbody></table>
+    ${yAvg.length ? `<p class="hs-sm">${yAvg.map(([y, v]) => `Năm học ${esc(y.replace("-", "–"))}: <b>${v ?? "—"}</b> ${v != null ? xlChip(xlDrl(v)) : ""}`).join(" · ")}${toan != null ? ` · Toàn khóa (đến nay): <b>${toan}</b>` : ""}</p>` : ""}</div>`;
+}
+
+/* ---- PHONG TRÀO ---- */
+function tabPT(V) {
+  const { s, own, edit, acts } = V;
+  const bcs = V.bcsList;
+  const row = (a, conf) => { const t = HD_TT[a.tt] || HD_TT.cho; return `<tr><td>${esc(fmtD(a.ngay))}</td><td><b>${esc(a.ten)}</b>${a.moTa ? `<br><small class="muted">${esc(a.moTa)}</small>` : ""}${a.minhChung ? `<br><a href="${esc(a.minhChung)}" target="_blank" rel="noopener">Minh chứng ↗</a>` : ""}${conf ? `<br><small>${esc(a.hoTen || a.mssv)} · ${esc(a.mssv)}</small>` : ""}</td>
+    <td>${esc((HD_NHOM[a.nhom] || "").split("(")[0])}</td><td>${esc((HD_CAP[a.cap] || [""])[0])}</td><td>${esc((HD_VT[a.vaiTro] || [""])[0])}</td><td class="c">${hdDiem(a)}</td>
+    <td><span class="hs-chip" style="color:${t[1]};background:${t[2]}">${t[0]}</span>${a.xn && a.xn.by ? `<br><small class="muted">${esc(P.showName(a.xn.by))}${a.xn.gc ? ": " + esc(a.xn.gc) : ""}</small>` : ""}</td>
+    <td>${conf ? `<button type="button" class="btn sm primary" data-hdok="${esc(a.mssv)}|${esc(a.id)}">Xác nhận</button> <button type="button" class="btn sm" data-hdno="${esc(a.mssv)}|${esc(a.id)}">Không</button>` : (own && a.tt !== "ok") || isAdmin() ? `<button type="button" class="linkish" data-hddel="${esc(a.id)}">Xóa</button>` : (edit && a.tt === "cho") ? `<button type="button" class="btn sm primary" data-hdok="${esc(s.mssv)}|${esc(a.id)}">Xác nhận</button>` : ""}</td></tr>`; };
+  const ky = {}; acts.forEach(a => (ky[a.ky || ""] = ky[a.ky || ""] || []).push(a));
+  return `<div class="sbox"><h3 class="sbox-title">PHONG TRÀO — HOẠT ĐỘNG ĐÃ THAM GIA</h3>
+    <p class="muted hs-sm">Sinh viên kê khai từng hoạt động; ban cán sự lớp hoặc cố vấn học tập xác nhận thì hoạt động mới được tính vào thành tích và gợi ý điểm rèn luyện (nhóm 3, 4, 5). Điểm tạm tính = cấp tổ chức (lớp 2 · khoa 3 · Học viện 4 · ngoài Học viện 5) + vai trò (tham gia 0 · ban tổ chức 2 · đạt giải/khen thưởng 3), cộng theo kỳ và không vượt mức tối đa của nhóm.</p>
+    ${own ? `<details class="more"${acts.length ? "" : " open"}><summary>＋ Kê khai hoạt động mới</summary><div class="grid2">
+      <label class="fld"><span>Tên hoạt động *</span><input id="hdTen" placeholder="Ví dụ: Tình nguyện Mùa hè xanh 2026"></label><label class="fld"><span>Ngày</span><input id="hdNgay" type="date" value="${new Date().toISOString().slice(0, 10)}"></label>
+      <label class="fld"><span>Nhóm</span><select id="hdNhom">${Object.entries(HD_NHOM).map(([k, n]) => `<option value="${k}">${esc(n)}</option>`).join("")}</select></label>
+      <label class="fld"><span>Cấp tổ chức</span><select id="hdCap">${Object.entries(HD_CAP).map(([k, n]) => `<option value="${k}">${esc(n[0])}</option>`).join("")}</select></label>
+      <label class="fld"><span>Vai trò / kết quả</span><select id="hdVt">${Object.entries(HD_VT).map(([k, n]) => `<option value="${k}">${esc(n[0])}</option>`).join("")}</select></label>
+      <label class="fld"><span>Link minh chứng (ảnh, giấy chứng nhận trên Drive…)</span><input id="hdMc" placeholder="https://"></label></div>
+      <label class="fld"><span>Mô tả ngắn</span><input id="hdMt"></label><div class="dlg-act" style="justify-content:flex-start"><button type="button" class="btn primary" id="hdAdd">Gửi kê khai</button></div><p class="err" id="hdErr"></p></details>` : ""}
+    ${Object.keys(ky).sort().reverse().map(k => { const g = hdTong(acts, k); return `<h4 class="hs-h4">${k ? esc(kyName(k)) : "Chưa xác định kỳ"} <small class="muted">— đã xác nhận: nhóm 3 ${g.n3} · nhóm 4 ${g.n4} · nhóm 5 ${g.n5} điểm</small></h4>
+      <div class="tbl-wrap"><table class="adm-table hs-hd"><thead><tr><th>Ngày</th><th>Hoạt động</th><th>Nhóm</th><th>Cấp</th><th>Vai trò</th><th class="c">Điểm</th><th>Xác nhận</th><th></th></tr></thead><tbody>${ky[k].sort((a, b) => String(b.ngay).localeCompare(String(a.ngay))).map(a => row(a, false)).join("")}</tbody></table></div>`; }).join("") || `<p class="muted">Chưa kê khai hoạt động nào.</p>`}
+    ${bcs ? `<h4 class="hs-h4">Hoạt động của lớp ${esc(s.lop)} chờ ban cán sự xác nhận (${bcs.length})</h4>${bcs.length ? `<div class="tbl-wrap"><table class="adm-table hs-hd"><thead><tr><th>Ngày</th><th>Hoạt động</th><th>Nhóm</th><th>Cấp</th><th>Vai trò</th><th class="c">Điểm</th><th>Trạng thái</th><th></th></tr></thead><tbody>${bcs.map(a => row(a, true)).join("")}</tbody></table></div>` : `<p class="muted">Không có kê khai nào đang chờ.</p>`}` : ""}</div>`;
+}
+
+/* ---- THỦ TỤC – DỊCH VỤ CÔNG ---- */
+function tabTT(V) {
+  const { dons, own } = V;
+  const ttLinks = THU_TUC.filter(t => t.active !== false);
+  return `<div class="sbox"><h3 class="sbox-title">THỦ TỤC — DỊCH VỤ CÔNG</h3>
+    ${dons.length ? `<div class="tbl-wrap"><table class="adm-table"><thead><tr><th>Mã hồ sơ</th><th>Thủ tục</th><th>Ngày gửi</th><th>Trạng thái</th><th>Kết quả</th></tr></thead><tbody>${dons.map(d => { const last = (d.history || []).slice(-1)[0] || {}; return `<tr class="tt-row" data-go="tt-don/${esc(d.id)}"><td><b>${esc(d.ma || "")}</b></td><td>${esc(d.ttTen || "")}</td><td>${esc(fmtD(String(d.created || "").slice(0, 10)))}</td><td>${esc(DON_TT[d.status] || d.status || "")}${last.at ? `<br><small class="muted">${esc(fmtD(String(last.at).slice(0, 10)))}${last.note ? ": " + esc(last.note) : ""}</small>` : ""}</td><td>${d.banKySo ? `<a href="${esc(d.banKySo)}" target="_blank" rel="noopener">Bản ký số ↗</a>` : d.status === "da-duyet" ? "Đã duyệt — in tại trang đơn" : ""}</td></tr>`; }).join("")}</tbody></table></div>` : `<p class="muted">Chưa có hồ sơ thủ tục nào.</p>`}
+    ${own ? `<h4 class="hs-h4">Lập đơn mới</h4><div class="tt-links">${ttLinks.map(t => `<a href="#tt/${esc(t.key)}"><span class="tt-dot"></span>${esc(t.ten)}</a>`).join("")}</div>` : ""}</div>`;
+}
+
+async function bindSv(V) {
+  const { s, edit, own } = V;
+  const rerender = () => drawSv(V);
+  const saveDoc = async (patch, msg) => { await setDoc(doc(db, "pna_hoso", s.mssv), { ...patch, updated: nowISO(), by: myEmail() }, { merge: true }); P.logAct("HOSO", s.mssv + " · " + msg); ALL = null; };
+  const save = async (patch, msg) => { await saveDoc(patch, msg); Object.assign(s, patch); P.toast("Đã lưu.", "ok"); rerender(); };
+  document.querySelectorAll("[data-htview]").forEach(b => b.onclick = () => { V.view = b.dataset.htview; rerender(); });
+  document.querySelectorAll("[data-hk]").forEach(b => b.onclick = () => { V.hk = +b.dataset.hk; rerender(); });
+  document.querySelectorAll("[data-ky]").forEach(b => b.onclick = () => { V.ky = b.dataset.ky; rerender(); });
+  /* Học tập: lưu từng ô */
+  const putHT = async (k, f, val) => {
+    const v = { ...((s.hocTap || {})[k] || {}), [f]: val, at: nowISO(), by: myEmail() };
     s.hocTap = { ...(s.hocTap || {}), [k]: v };
-    try { await setDoc(doc(db, "pna_hoso", s.mssv), { hocTap: { [k]: v }, updated: nowISO(), by: myEmail() }, { merge: true }); ALL = null; }
-    catch (e) { P.toast("Chưa lưu được: " + e.message, "err"); }
+    try { await setDoc(doc(db, "pna_hoso", s.mssv), { hocTap: { [k]: v }, updated: nowISO(), by: myEmail() }, { merge: true }); ALL = null; } catch (e) { P.toast("Chưa lưu được: " + e.message, "err"); }
   };
-  draw();
-  if (!ed) return;
-  box.addEventListener("click", async e => {
-    const c = e.target.closest(".hs-ck.ed"); if (!c) return;
-    const k = c.dataset.k, cur = ((s.hocTap || {})[k] || {}).tt || "";
-    const tt = cur === c.dataset.tt ? "" : c.dataset.tt;
-    s.hocTap = { ...(s.hocTap || {}), [k]: { ...((s.hocTap || {})[k] || {}), tt } }; draw();
-    await put(k, { tt });
+  document.querySelectorAll(".hs-ct input").forEach(i => i.addEventListener("change", async () => {
+    const f = i.dataset.f; let val;
+    if (i.type === "checkbox") val = i.checked;
+    else if (f === "gc") val = i.value.trim();
+    else { const t = i.value.trim().replace(",", "."); if (t !== "" && (isNaN(+t) || +t < 0 || +t > 10)) { P.toast("Điểm từ 0 đến 10.", "err"); i.value = ""; return; } val = t === "" ? "" : +t; }
+    await putHT(i.dataset.k, f, val);
+    if (f !== "gc") { const y = window.scrollY; rerender(); window.scrollTo(0, y); }
+  }));
+  /* Rèn luyện */
+  const rlVals = who => { const o = {}; let bad = false; document.querySelectorAll(`[data-rl="${who}"]`).forEach(i => { const t = i.value.trim(); if (t === "") return; const n = +t.replace(",", "."); if (isNaN(n) || n < 0 || n > +i.dataset.max) bad = true; o[i.dataset.c] = n; }); return bad ? null : o; };
+  if ($("#rlTuSave")) $("#rlTuSave").onclick = async () => { const o = rlVals("tu"); if (!o) return P.toast("Điểm mỗi nhóm không vượt mức tối đa.", "err"); o.gc = $("#rlNote").value.trim(); o.at = nowISO(); try { await save({ drlTu: { ...(s.drlTu || {}), [V.ky]: o } }, "tự đánh giá RL " + V.ky); } catch (e) { P.toast("Chưa lưu được: " + e.message, "err"); } };
+  if ($("#rlCvSave")) $("#rlCvSave").onclick = async () => {
+    const o = rlVals("cv"); if (!o) return P.toast("Điểm mỗi nhóm không vượt mức tối đa.", "err");
+    if (DRL_N.some(([c]) => o[c] == null)) return P.toast("Nhập đủ điểm 5 nhóm tiêu chí trước khi chốt.", "err");
+    const tot = DRL_N.reduce((n, [c]) => n + (o[c] || 0), 0);
+    if (!await P.ask(`Chốt kết quả rèn luyện ${kyName(V.ky)}: ${tot} điểm — ${xlDrl(tot)}?`)) return;
+    try { await save({ drl: { ...(s.drl || {}), [V.ky]: { diem: tot, xepLoai: xlDrl(tot), chiTiet: o, ghiChu: $("#rlCvNote").value.trim(), nguon: "Phiếu đánh giá — " + myEmail() } } }, "chốt RL " + V.ky); } catch (e) { P.toast("Chưa lưu được: " + e.message, "err"); }
+  };
+  /* Phong trào */
+  if ($("#hdAdd")) $("#hdAdd").onclick = async () => {
+    const ten = $("#hdTen").value.trim(), ngay = $("#hdNgay").value; if (!ten) return $("#hdErr").textContent = "Nhập tên hoạt động.";
+    const a = { ten, ngay, ky: kyOfDate(ngay), nhom: $("#hdNhom").value, cap: $("#hdCap").value, vaiTro: $("#hdVt").value, minhChung: $("#hdMc").value.trim(), moTa: $("#hdMt").value.trim(), tt: "cho", mssv: s.mssv, hoTen: s.hoTen, lop: s.lop, cvht: s.cvht || [], created: nowISO(), by: myEmail() };
+    if (a.minhChung && !/^https?:\/\//i.test(a.minhChung)) return $("#hdErr").textContent = "Link minh chứng phải bắt đầu bằng https://";
+    try { const r = await addDoc(collection(db, "pna_hoso", s.mssv, "hoatdong"), a); V.acts.push({ id: r.id, ...a }); P.toast("Đã gửi kê khai, chờ xác nhận.", "ok"); rerender(); } catch (e) { $("#hdErr").textContent = "Chưa gửi được: " + e.message; }
+  };
+  const xn = async (key, ok) => {
+    const [m, id] = key.split("|"); let gc = "";
+    if (!ok) { const r = await P.ask("Lý do không xác nhận (sinh viên sẽ thấy):", { title: "KHÔNG XÁC NHẬN HOẠT ĐỘNG", input: "Lý do", ok: "Gửi" }); if (r === null || r === false) return; gc = String(r).trim(); }
+    const patch = { tt: ok ? "ok" : "no", xn: { by: myEmail(), at: nowISO(), gc } };
+    try { await updateDoc(doc(db, "pna_hoso", m, "hoatdong", id), patch);
+      [V.acts, V.bcsList || []].forEach(L => L.forEach(a => { if (a.id === id) Object.assign(a, patch); }));
+      if (V.bcsList) V.bcsList = V.bcsList.filter(a => a.tt === "cho"); P.toast(ok ? "Đã xác nhận." : "Đã trả lại.", "ok"); rerender(); } catch (e) { P.toast("Chưa lưu được: " + e.message, "err"); }
+  };
+  document.querySelectorAll("[data-hdok]").forEach(b => b.onclick = () => xn(b.dataset.hdok, true));
+  document.querySelectorAll("[data-hdno]").forEach(b => b.onclick = () => xn(b.dataset.hdno, false));
+  document.querySelectorAll("[data-hddel]").forEach(b => b.onclick = async () => { if (!await P.ask("Xóa kê khai này?")) return; try { await deleteDoc(doc(db, "pna_hoso", s.mssv, "hoatdong", b.dataset.hddel)); V.acts = V.acts.filter(a => a.id !== b.dataset.hddel); rerender(); } catch (e) { P.toast(e.message, "err"); } });
+  /* Ban cán sự: tải kê khai chờ của lớp (một lần) */
+  if (V.tab === "phong-trao" && own && s.chucVu && !V.bcsList) {
+    try { const q = await getDocs(query(collectionGroup(db, "hoatdong"), where("lop", "==", s.lop), where("tt", "==", "cho"))); V.bcsList = []; q.forEach(d => { const a = { id: d.id, ...d.data() }; if (a.mssv !== s.mssv) V.bcsList.push(a); }); rerender(); return; } catch (e) { V.bcsList = []; console.warn("BCS", e.message); }
+  }
+  if (!edit) return;
+  if ($("#svEv")) $("#svEv").onclick = () => evDialog(s, async (p, m) => { await saveDoc(p, m); Object.assign(s, p); P.toast("Đã lưu.", "ok"); rerender(); });
+  if ($("#svEdit")) $("#svEdit").onclick = () => editDialog(s, async (p, m) => { await saveDoc(p, m); Object.assign(s, p); P.toast("Đã lưu.", "ok"); rerender(); });
+  document.querySelectorAll("[data-evdel]").forEach(b => b.onclick = async () => {
+    const i = +b.dataset.evdel, e = (s.suKien || [])[i]; if (!e || !await P.ask("Xóa sự kiện “" + ((SK[e.loai] || SK.khac)[0]) + "” khỏi hồ sơ?")) return;
+    try { await save({ suKien: s.suKien.filter((_, j) => j !== i) }, "xóa sự kiện"); } catch (x) { P.toast(x.message, "err"); }
   });
-  box.addEventListener("change", e => { const i = e.target.closest(".hs-gc"); if (i) put(i.dataset.k, { gc: i.value.trim() }); });
+  if ($("#noteAdd")) $("#noteAdd").onclick = async () => { const t = $("#noteIn").value.trim(); if (!t) return; try { const r = await addDoc(collection(db, "pna_hoso", s.mssv, "noibo"), { noiDung: t, at: nowISO(), by: myEmail() }); V.notes.push({ id: r.id, noiDung: t, at: nowISO(), by: myEmail() }); rerender(); } catch (e) { P.toast("Chưa lưu được: " + e.message, "err"); } };
+  document.querySelectorAll("[data-notedel]").forEach(b => b.onclick = async () => { if (!await P.ask("Xóa ghi chú này?")) return; try { await deleteDoc(doc(db, "pna_hoso", s.mssv, "noibo", b.dataset.notedel)); V.notes = V.notes.filter(n => n.id !== b.dataset.notedel); rerender(); } catch (e) { P.toast(e.message, "err"); } });
 }
 
 async function loadDons(s, own) {
@@ -545,7 +711,7 @@ async function route(h) {
   if (h === "sv-nhap") return renderNhap();
   if (h === "sv-ctdt") return renderCtdt();
   if (h.startsWith("sv/lop/")) return renderLop(decodeURIComponent(h.slice(7)));
-  if (h.startsWith("sv/")) return renderSv(decodeURIComponent(h.slice(3)));
+  if (h.startsWith("sv/")) { const [m, t] = h.slice(3).split("/"); return renderSv(decodeURIComponent(m), t); }
   renderHome();
 }
 document.addEventListener("pna:auth", async () => {

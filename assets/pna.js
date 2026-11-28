@@ -1789,6 +1789,8 @@ function openDoc(id, forceMode) {
   if (currentDocMode !== "edit") ed = null;
   $("#dlgDoc").classList.toggle("word-on", !f.locked && (currentDocMode === "edit" || (!did && !(f.link && /^https?:\/\//.test(f.link)))));
   $("#dlgDoc").classList.remove("show-info");
+  const full = localStorage.getItem("pna_doc_full") !== "0";
+  $("#dlgDoc").classList.toggle("full", full); $("#docFull").textContent = full ? "🗗 Thu nhỏ" : "⛶ Toàn màn hình";
   $("#docTitle").textContent = (f.star ? "★ " : "") + f.name;
   const nt = $("#docNewTab"); nt.hidden = !!f.locked || location.hash.startsWith("#xem/"); nt.href = location.pathname + location.search + "#xem/" + encodeURIComponent(id);
   $("#docInfoBtn").hidden = !!f.locked || $("#dlgDoc").classList.contains("word-on");
@@ -4168,6 +4170,7 @@ dropEl.ondragover = e => { e.preventDefault(); dropEl.classList.add("drag"); };
 dropEl.ondragleave = () => dropEl.classList.remove("drag");
 dropEl.ondrop = e => { e.preventDefault(); dropEl.classList.remove("drag"); const txt = e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain"); if (e.dataTransfer.files.length) addUpFiles(e.dataTransfer.files); else if (txt && isWebUrl(txt.trim().split(/\s+/)[0])) { $("#upLinks").value = ($("#upLinks").value ? $("#upLinks").value + "\n" : "") + txt.trim(); renderUpList(); } };
 $("#upForm").onsubmit = submitUpload;
+$("#docFull").onclick = () => { const on = !$("#dlgDoc").classList.contains("full"); $("#dlgDoc").classList.toggle("full", on); $("#docFull").textContent = on ? "🗗 Thu nhỏ" : "⛶ Toàn màn hình"; try { localStorage.setItem("pna_doc_full", on ? "1" : "0"); } catch (e) {} };
 document.querySelectorAll("[data-upmode]").forEach(b => b.onclick = () => setUpMode(b.dataset.upmode));
 $("#upBody").addEventListener("paste", bodyPaste);
 $("#upBody").addEventListener("input", upBodyCount);
