@@ -9,7 +9,7 @@ on:
     branches: [main]
     paths: ["firestore.rules", "data/inbox/**", ".github/workflows/dong-bo-firebase.yml", "tools/dongbo.mjs"]
   schedule:
-    - cron: "23 */3 * * *"
+    - cron: "23 * * * *"
   workflow_dispatch:
 permissions:
   contents: write
