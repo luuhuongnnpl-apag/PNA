@@ -38,6 +38,8 @@ function studentKey() { return 'pna-portal-student-v1:' + session.uid; }
 function studentData() { return read(studentKey(), {}); }
 function saveStudent(data) { localStorage.setItem(studentKey(), JSON.stringify(data)); }
 function admin() { return session.role === 'admin'; }
+function systemAccess() { return !!session.uid && ['admin','advisor'].includes(session.role); }
+const services = [['retake','Đăng ký học lại, cải thiện'],['withdraw','Đăng ký rút học phần'],['signature','Xác nhận chữ kí']];
 function studentAccess() { return ['student', 'advisor', 'admin'].includes(session.role) && !!session.uid; }
 const pageRoute = key => resourcePages.some(([id]) => id === key) ? key : 'page-' + key;
 function resourceItems() {
@@ -65,7 +67,8 @@ function renderNav(route) {
     <div class="nav-group">
       <h2><span><span aria-hidden="true">▤</span> HỒ SƠ SINH VIÊN</span></h2>
       <div class="nav-items">${students}</div>
-    </div>`;
+    </div>
+    ${systemAccess() ? '<div class="nav-group"><h2>' + routeLink('system','QUẢN TRỊ HỆ THỐNG',route) + '</h2><div class="nav-items">' + routeLink('system','Danh sách lớp',route) + (admin() ? routeLink('admin','Quản trị nội dung và quyền',route) : '') + '</div></div>' : ''}`;
 }
 
 function noticeMeta(item) {
@@ -94,7 +97,7 @@ function archiveCards(items) {
 function home() {
   const items = notices();
   return `<section class="card" aria-labelledby="pageTitle">
-      ${heading('Thông báo mới')}
+      ${heading('THÔNG BÁO VĂN BẢN MỚI')}
       <div class="announcement-grid">${items.slice(0, 6).map(announcementCard).join('')}</div>
     </section>
     <section class="card" aria-labelledby="archiveTitle">
@@ -403,6 +406,8 @@ function render({focus = false, cohort} = {}) {
   else if (route === 'courses') content.innerHTML = courses(cohort ?? studentData().courseCohort ?? studentData().profile?.cohort ?? '');
   else if (route === 'conduct') content.innerHTML = conduct();
   else if (route === 'activities' || route === 'other') content.innerHTML = activities(route);
+  else if (route === 'system') content.innerHTML = systemAccess() ? card('QUẢN TRỊ HỆ THỐNG', '<h3>Danh sách lớp</h3><p class="muted">Chưa kết nối danh sách lớp chính thức. Không hiển thị dữ liệu sinh viên thật.</p>' + (admin() ? '<p><a href="#admin">Quản trị nội dung và phân quyền</a></p>' : '')) : card('Quản trị hệ thống','<p>Chỉ dành cho quản trị viên và cố vấn được cấp quyền.</p>');
+  else if (services.some(([id]) => route === 'service/' + id)) content.innerHTML = card(services.find(([id]) => route === 'service/' + id)[1], '<p class="muted">Đang chuẩn bị quy trình và biểu mẫu chính thức. Chưa tiếp nhận đăng ký trực tuyến.</p><a href="#home">Về trang chủ</a>');
   else if (route === 'admin') content.innerHTML = locked('Quản trị');
   else content.innerHTML = missing();
   if (focus) el('pageTitle').focus();
