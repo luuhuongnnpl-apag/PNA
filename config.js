@@ -4,12 +4,13 @@
 window.PNA_CONFIG = {
   // Dán nguyên khối firebaseConfig của dự án PNA (Firebase Console → Project settings → Your apps → Web app → Config)
   FIREBASE: {
-    apiKey: "",
+    apiKey: "AIzaSyBT2s_DvPWpr14JJ9J8H-nCRU4g7tw-Uqg",
     authDomain: "academic-advising-center.firebaseapp.com",
     projectId: "academic-advising-center",
     storageBucket: "academic-advising-center.firebasestorage.app",
-    messagingSenderId: "",
-    appId: ""
+    messagingSenderId: "452607831007",
+    appId: "1:452607831007:web:f2b3cfbd06daef8cee326a",
+    measurementId: "G-F63MX90QM5"
   },
   // OAuth client web (Google Cloud của dự án PNA → APIs & Services → Credentials) — gia hạn quyền Drive ngầm
   CLIENT_ID: "",
