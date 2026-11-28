@@ -147,8 +147,9 @@ async function renderLop(id) {
   const ks = [...new Set(svs.flatMap(s => Object.keys(s.drl || {})))].sort();
   const kLast = ks[ks.length - 1];
   const dist = {}; if (kLast) svs.forEach(s => { const x = (s.drl || {})[kLast]; if (x && x.xepLoai) dist[x.xepLoai] = (dist[x.xepLoai] || 0) + 1; });
-  let ctdts = [];
-  if (isAdmin()) { try { (await getDocs(collection(db, "pna_ctdt"))).forEach(d => ctdts.push({ id: d.id, ...d.data() })); } catch (e) {} }
+  let ctdts = [], lopCt = null;
+  if (isAdmin()) { try { (await getDocs(collection(db, "pna_ctdt"))).forEach(d => ctdts.push({ id: d.id, ...d.data() })); } catch (e) {} lopCt = ctdts.find(c => c.id === l.ctdt) || null; }
+  else if (l.ctdt) { try { const x = await getDoc(doc(db, "pna_ctdt", l.ctdt)); if (x.exists()) lopCt = { id: x.id, ...x.data() }; } catch (e) {} }
   const bcs = (l.bcs || []).map(b => `<li><b>${esc(b.chucVu)}</b>: <a href="#sv/${esc(b.mssv)}">${esc(b.hoTen)}</a>${b.sdt ? ` · <a href="tel:${esc(b.sdt)}">${esc(b.sdt)}</a>` : ""}</li>`).join("");
   const adminBox = isAdmin() ? `<details class="more"><summary>Gán cố vấn học tập, chương trình đào tạo (quản trị)</summary>
       <div class="grid2"><label class="fld"><span>Email cố vấn học tập (cách nhau dấu phẩy)</span><input id="lopCv" value="${esc((l.cvht || []).join(", "))}"></label>
@@ -162,7 +163,7 @@ async function renderLop(id) {
       <div class="dlg-act" style="justify-content:flex-start"><button type="button" class="btn primary" id="drlGo">Cập nhật kết quả rèn luyện</button></div><p class="err" id="drlErr"></p></details>` : "";
   const rows = svs.map((s, i) => { const d = kLast && (s.drl || {})[kLast]; return `<tr class="tt-row" data-go="sv/${esc(s.mssv)}" data-st="${esc(s.trangThai || "dang-hoc")}" data-q="${esc((s.mssv + " " + s.hoTen + " " + (s.sdt || "")).toLowerCase())}">
     <td class="c">${i + 1}</td><td><b>${esc(s.mssv)}</b></td><td>${esc(s.hoTen)}${s.chucVu ? `<br><small class="hs-cs">${esc(s.chucVu)}</small>` : ""}</td><td>${esc(fmtD(s.ngaySinh))}</td><td>${esc(s.sdt || "")}</td>
-    <td>${chip(s.trangThai)}</td><td class="c">${d ? (d.diem ?? "—") : ""}</td><td>${d ? xlChip(d.xepLoai) : ""}</td><td class="c">${s.email ? "✓" : ""}</td></tr>`; }).join("");
+    <td>${chip(s.trangThai)}</td><td class="c">${d ? (d.diem ?? "—") : ""}</td><td>${d ? xlChip(d.xepLoai) : ""}</td><td class="c">${s.email ? "✓" : ""}</td>${lopCt ? (() => { const t = tienDo(lopCt, s.hocTap); return `<td class="c">${t.qua}/${t.tong}${t.chua ? `<br><small style="color:#b3261e">${t.chua} HP chưa qua</small>` : ""}</td>`; })() : ""}</tr>`; }).join("");
   const hasAcc = svs.filter(s => s.email).length;
   page(`Lớp ${esc(l.id)}${l.ten ? " — " + esc(l.ten) : ""}`, `
     <div class="hs-info">${[["Ngành", l.nganh], ["Khóa trúng tuyển", l.khoa ? l.khoa + (namThu(l.khoa) ? " (năm thứ " + namThu(l.khoa) + ")" : "") : ""], ["Hệ đào tạo", l.he], ["Cố vấn học tập", (l.cvht || []).map(P.showName).join(", ") || "Chưa gán"], ["Chương trình đào tạo", l.ctdt || "Chưa gán"], ["Sĩ số", svs.length + " sinh viên · " + hasAcc + " đã có tài khoản"]].map(([a, b]) => `<div><span>${a}</span><b>${esc(b || "—")}</b></div>`).join("")}</div>
@@ -174,7 +175,7 @@ async function renderLop(id) {
     <div class="page-tools">${edit ? `<button type="button" id="lopAcc">Cấp tài khoản cho sinh viên chưa có (${svs.length - hasAcc})</button>` : ""}<button type="button" id="lopCsv">⤓ Xuất danh sách (Excel)</button></div>
     ${adminBox}${drlBox}
     <div class="hs-filter"><input type="search" id="lopQ" placeholder="Lọc theo mã, tên, số điện thoại…"><select id="lopSt"><option value="">Mọi trạng thái</option>${Object.keys(TT).map(k => `<option value="${k}">${TT[k][0]}</option>`).join("")}</select></div>
-    <div class="tbl-wrap"><table class="adm-table ftbl hs-tbl"><thead><tr><th class="c">STT</th><th>Mã SV</th><th>Họ và tên</th><th>Ngày sinh</th><th>Điện thoại</th><th>Trạng thái</th><th class="c">ĐRL</th><th>Xếp loại${kLast ? `<br><small>${esc(kyName(kLast))}</small>` : ""}</th><th class="c">Tài khoản</th></tr></thead><tbody>${rows || `<tr><td colspan="9" class="muted">Chưa có sinh viên.</td></tr>`}</tbody></table></div>`,
+    <div class="tbl-wrap"><table class="adm-table ftbl hs-tbl"><thead><tr><th class="c">STT</th><th>Mã SV</th><th>Họ và tên</th><th>Ngày sinh</th><th>Điện thoại</th><th>Trạng thái</th><th class="c">ĐRL</th><th>Xếp loại${kLast ? `<br><small>${esc(kyName(kLast))}</small>` : ""}</th><th class="c">Tài khoản</th>${lopCt ? `<th class="c">TC đã qua</th>` : ""}</tr></thead><tbody>${rows || `<tr><td colspan="10" class="muted">Chưa có sinh viên.</td></tr>`}</tbody></table></div>`,
     [["sv", "Hồ sơ sinh viên"], [null, l.id]]);
   const filt = () => { const q = $("#lopQ").value.trim().toLowerCase(), st = $("#lopSt").value; document.querySelectorAll(".hs-tbl tbody tr[data-q]").forEach(tr => tr.hidden = (q && !tr.dataset.q.includes(q)) || (st && tr.dataset.st !== st)); };
   $("#lopQ").oninput = filt; $("#lopSt").onchange = filt;
@@ -252,7 +253,6 @@ async function renderSv(mssv) {
     ["Chức vụ", s.chucVu ? s.chucVu + (s.chucVuNam ? " (" + s.chucVuNam.replace("-", "–") + ")" : "") : ""], ["Điện thoại", s.sdt], ["Email liên hệ", s.emailLienHe], ["Quê quán", s.queQuan], ["Tài khoản PNA", s.email ? P.showName(s.email) : "Chưa cấp"], ["Cố vấn học tập", (s.cvht || []).map(P.showName).join(", ") || "Chưa gán"]];
   const ttLinks = THU_TUC.filter(t => t.active !== false);
   const donRows = dons.map(d => `<tr class="tt-row" data-go="tt-don/${esc(d.id)}"><td><b>${esc(d.ma || "")}</b></td><td>${esc(d.ttTen || "")}</td><td>${esc(fmtD(String(d.created || "").slice(0, 10)))}</td><td>${esc(({ "cho-duyet": "Đang xử lý", "bo-sung": "Cần bổ sung", "da-duyet": "Đã duyệt", "tu-choi": "Không duyệt", "rut": "Đã rút" })[d.status] || d.status || "")}</td></tr>`).join("");
-  const plan = ct && Array.isArray(ct.keHoach) && ct.keHoach.length ? (() => { const g = {}; ct.keHoach.forEach(h => (g[h.hk] = g[h.hk] || []).push(h)); return `<div class="hs-plan">${Object.keys(g).sort((a, b) => +a - +b).map(k => `<details${+k === Math.min(SO_NAM * 2, (namThu(s.khoa) - 1) * 2 + (cur.endsWith("_1") ? 1 : 2)) ? " open" : ""}><summary>Học kỳ ${esc(k)} · ${g[k].reduce((n, h) => n + (+h.tc || 0), 0)} tín chỉ</summary><table class="adm-table"><tbody>${g[k].map(h => `<tr><td>${esc(h.ma || "")}</td><td>${esc(h.ten)}</td><td class="c">${esc(h.tc || "")}</td><td>${esc(h.loai || "")}</td></tr>`).join("")}</tbody></table></details>`).join("")}</div>`; })() : "";
   page(esc(s.hoTen), `
     <div class="hs-head"><div class="hs-av">${esc((s.ten || s.hoTen || "?").slice(0, 1))}</div><div><div class="hs-name">${esc(s.hoTen)} ${chip(s.trangThai)}</div><div class="muted">${esc(s.mssv)} · Lớp ${esc(s.lop)} · ${esc(s.nganh || "")} · Khóa ${esc(s.khoa || "")}</div></div>
       ${edit ? `<div class="hs-act"><button type="button" class="btn" id="svEdit">✎ Sửa thông tin</button><button type="button" class="btn primary" id="svEv">＋ Ghi nhận sự kiện</button></div>` : ""}</div>
@@ -263,8 +263,8 @@ async function renderSv(mssv) {
       <div class="sbox"><h3 class="sbox-title">KẾT QUẢ RÈN LUYỆN</h3>${Object.keys(s.drl || {}).length ? `<table class="adm-table"><thead><tr><th>Học kỳ</th><th class="c">Điểm</th><th>Xếp loại</th></tr></thead><tbody>${Object.keys(s.drl).sort().reverse().map(k => `<tr><td>${esc(kyName(k))}${s.drl[k].ghiChu ? `<br><small class="muted">${esc(s.drl[k].ghiChu)}</small>` : ""}</td><td class="c">${s.drl[k].diem ?? "—"}</td><td>${xlChip(s.drl[k].xepLoai)}</td></tr>`).join("")}</tbody></table>` : `<p class="muted">Chưa có kết quả.</p>`}
         ${edit ? `<button type="button" class="sbtn" id="svDrl">Nhập / sửa kết quả rèn luyện</button>` : ""}</div>
     </div>
+    <div class="sbox hs-ctbox"><h3 class="sbox-title">TIẾN ĐỘ HỌC TẬP THEO CHƯƠNG TRÌNH ĐÀO TẠO</h3>${ct ? `<div id="hsCt"></div>` : `<p class="muted">Chưa gán chương trình đào tạo cho lớp ${esc(s.lop)}.${isAdmin() ? ` Gán ở <a href="#sv/lop/${esc(s.lop)}">trang lớp</a>.` : ""}</p>`}</div>
     <div class="hs-two">
-      <div class="sbox"><h3 class="sbox-title">CHƯƠNG TRÌNH ĐÀO TẠO</h3>${ct ? `<p style="margin:0 0 8px"><b>${esc(ct.ten || ct.id)}</b>${ct.tongTC ? ` · ${esc(ct.tongTC)} tín chỉ` : ""}${ct.link ? ` · <a href="${esc(ct.link)}" target="_blank" rel="noopener">Văn bản CTĐT ↗</a>` : ""}</p>${plan}` : `<p class="muted">Chưa gán chương trình đào tạo cho lớp ${esc(s.lop)}.${isAdmin() ? ` Gán ở <a href="#sv/lop/${esc(s.lop)}">trang lớp</a>.` : ""}</p>`}</div>
       <div class="sbox"><h3 class="sbox-title">THỦ TỤC — DỊCH VỤ CÔNG</h3>${donRows ? `<div class="tbl-wrap"><table class="adm-table"><tbody>${donRows}</tbody></table></div>` : `<p class="muted">Chưa có đơn nào.</p>`}
         ${own ? `<div class="tt-links" style="margin-top:8px">${ttLinks.map(t => `<a href="#tt/${esc(t.key)}"><span class="tt-dot"></span>${esc(t.ten)}</a>`).join("")}</div>` : ""}</div>
     </div>
@@ -272,6 +272,7 @@ async function renderSv(mssv) {
       ${notes.sort((a, b) => String(b.at).localeCompare(String(a.at))).map(n => `<div class="hs-note"><small class="muted">${esc(fmtD(String(n.at).slice(0, 10)))} · ${esc(P.showName(n.by || ""))}</small><p>${esc(n.noiDung)}</p><button type="button" class="linkish" data-notedel="${esc(n.id)}">Xóa</button></div>`).join("") || `<p class="muted">Chưa có ghi chú.</p>`}
       <textarea id="noteIn" rows="2" class="fld-sel" placeholder="Ghi chú tình hình học tập, gia đình, tư vấn đã thực hiện…"></textarea><button type="button" class="btn" id="noteAdd" style="margin-top:6px">Lưu ghi chú</button></div>` : ""}`,
     isStaff() ? [["sv", "Hồ sơ sinh viên"], ["sv/lop/" + s.lop, s.lop], [null, s.hoTen]] : null);
+  if (ct) mountCt(ct, s, edit || own);
   if (!edit) return;
   const save = async (patch, msg) => { await setDoc(doc(db, "pna_hoso", s.mssv), { ...patch, updated: nowISO(), by: myEmail() }, { merge: true }); P.logAct("HOSO", s.mssv + " · " + msg); reset(); P.toast("Đã lưu.", "ok"); renderSv(s.mssv); };
   $("#svEv").onclick = () => evDialog(s, save);
@@ -284,6 +285,71 @@ async function renderSv(mssv) {
   $("#noteAdd").onclick = async () => { const t = $("#noteIn").value.trim(); if (!t) return; try { await addDoc(collection(db, "pna_hoso", s.mssv, "noibo"), { noiDung: t, at: nowISO(), by: myEmail() }); renderSv(s.mssv); } catch (e) { P.toast("Chưa lưu được: " + e.message, "err"); } };
   document.querySelectorAll("[data-notedel]").forEach(b => b.onclick = async () => { if (!await P.ask("Xóa ghi chú này?")) return; try { await deleteDoc(doc(db, "pna_hoso", s.mssv, "noibo", b.dataset.notedel)); renderSv(s.mssv); } catch (e) { P.toast(e.message, "err"); } });
 }
+/* ---------- Tiến độ học tập theo CTĐT ----------
+   pna_hoso/{mssv}.hocTap = { <khóa học phần>: { tt: "qua" | "chua" | "cai-thien" | "", gc: ghi chú, at, by } }
+   Sinh viên tự đánh dấu, cố vấn học tập theo dõi và sửa được; học phần tự chọn in nghiêng. */
+const HT = [["qua", "Đã qua"], ["chua", "Chưa qua"], ["cai-thien", "Đã học cải thiện"]];
+const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+const passed = v => !!v && (v.tt === "qua" || v.tt === "cai-thien");
+function tienDo(ct, ht) {
+  let qua = 0, chua = 0, ctn = 0; ht = ht || {};
+  (ct.keHoach || []).forEach(h => { const v = ht[h.k]; if (h.loai !== "DK" && passed(v)) qua += +h.tc || 0; if (v && v.tt === "chua") chua++; if (v && v.tt === "cai-thien") ctn++; });
+  return { qua, chua, ctn, tong: +ct.tongTC || (ct.hocKy || []).reduce((n, h) => n + (+h.tc || 0), 0) };
+}
+const hkNow = khoa => { const n = namThu(khoa); return n ? Math.min(10, (n - 1) * 2 + (kyNow().endsWith("_1") ? 1 : 2)) : 0; };
+function ctdtHTML(ct, s, ed) {
+  const ht = s.hocTap || {}, plan = ct.keHoach || [], byCode = {}; plan.forEach(h => { if (h.ma) byCode[h.ma] = h; });
+  const t = tienDo(ct, ht), now = hkNow(s.khoa), pct = t.tong ? Math.min(100, Math.round(t.qua * 100 / t.tong)) : 0;
+  const hks = [...new Set([...(ct.hocKy || []).map(h => +h.hk), ...plan.map(h => +h.hk)])].sort((a, b) => a - b);
+  const sec = hk => {
+    const meta = (ct.hocKy || []).find(h => +h.hk === hk) || {}, rows = plan.filter(h => +h.hk === hk);
+    const quaHk = rows.filter(h => h.loai !== "DK" && passed(ht[h.k])).reduce((n, h) => n + (+h.tc || 0), 0);
+    let lastG = "", i = 0;
+    const body = rows.map(h => {
+      let g = "";
+      if ((h.nhom || "") !== lastG) { lastG = h.nhom || ""; if (lastG) g = `<tr class="hs-grp"><td></td><td colspan="7"><i>${esc(lastG)}</i></td></tr>`; }
+      const v = ht[h.k] || {}, tc = h.loai === "TC";
+      const miss = !passed(v) ? (h.tq || []).filter(c => byCode[c] && !passed(ht[byCode[c].k]) && ((ht[byCode[c].k] || {}).tt === "chua" || +h.hk <= now + 1)) : [];
+      return g + `<tr class="${tc ? "tc" : ""}${h.loai === "DK" ? " dk" : ""}${v.tt ? " st-" + v.tt : ""}" title="${v.at ? "Cập nhật " + esc(fmtD(String(v.at).slice(0, 10))) + " bởi " + esc(P.showName(v.by || "")) : ""}">
+        <td class="c">${++i}</td><td class="hs-ma">${esc(h.ma || "—")}</td>
+        <td>${tc ? `<i>${esc(h.ten)}</i>` : esc(h.ten)}${h.loai === "DK" ? ` <small class="muted">(điều kiện, không tính tích lũy)</small>` : ""}${h.ghiChu && h.loai !== "DK" ? `<br><small class="muted">${esc(h.ghiChu)}</small>` : ""}${(h.tq || []).length ? `<br><small class="muted">Tiên quyết: ${esc(h.tq.join(", "))}</small>` : ""}${miss.length ? `<br><small class="hs-warn">⚠ Chưa qua học phần tiên quyết: ${esc(miss.map(c => byCode[c].ten).join("; "))}</small>` : ""}</td>
+        <td class="c">${esc(h.tc)}</td>
+        ${HT.map(([k, n]) => `<td class="hs-ck${ed ? " ed" : ""}" data-k="${esc(h.k)}" data-tt="${k}" title="${n}"><span class="hs-box b-${k}${v.tt === k ? " on" : ""}">${v.tt === k ? "✓" : ""}</span></td>`).join("")}
+        <td>${ed ? `<input class="hs-gc" data-k="${esc(h.k)}" value="${esc(v.gc || "")}" placeholder="Ghi chú…">` : esc(v.gc || "")}</td></tr>`;
+    }).join("");
+    return `<details class="hs-hk${hk === now ? " now" : ""}"${hk <= now + 1 || !now ? " open" : ""}><summary><b>Học kỳ ${ROMAN[hk] || hk}</b> · ${esc(meta.tc || rows.reduce((n, h) => n + (h.loai === "BB" ? +h.tc || 0 : 0), 0))} tín chỉ${meta.ghiChu ? ` <span class="muted">(${esc(meta.ghiChu)})</span>` : ""}${hk === now ? ` <em>học kỳ hiện tại</em>` : ""}<span class="hs-hkq">Đã qua ${quaHk} TC</span></summary>
+      <div class="tbl-wrap"><table class="adm-table hs-ct"><thead><tr><th class="c">STT</th><th>Mã HP</th><th>Tên học phần</th><th class="c">TC</th><th class="c v">Đã qua</th><th class="c v">Chưa qua</th><th class="c v">Đã học cải thiện</th><th>Ghi chú tình trạng</th></tr></thead><tbody>${body}</tbody></table></div></details>`;
+  };
+  return `<p style="margin:0 0 6px"><b>${esc(ct.ten || ct.id)}</b>${ct.link ? ` · <a href="${esc(ct.link)}" target="_blank" rel="noopener">Văn bản CTĐT ↗</a>` : ""}${ct.ghiChu ? `<br><small class="muted">${esc(ct.ghiChu)}</small>` : ""}</p>
+    <div class="hs-prog"><div class="hs-bar"><span style="width:${pct}%"></span></div><b>${t.qua}/${t.tong} tín chỉ tích lũy (${pct}%)</b>${t.chua ? ` · <span style="color:#b3261e">${t.chua} học phần chưa qua — cần đăng ký học lại</span>` : ""}${t.ctn ? ` · ${t.ctn} học phần đã học cải thiện` : ""}</div>
+    <p class="muted" style="margin:4px 0 10px">${ed ? "Bấm vào ô để đánh dấu tình trạng từng học phần (bấm lại để bỏ); ghi chú lưu khi rời ô. " : ""}Học phần <i>in nghiêng</i> là học phần tự chọn — chỉ học đủ số tín chỉ của nhóm. Đối chiếu học phần tiên quyết trước khi đăng ký.</p>
+    ${hks.map(sec).join("")}`;
+}
+function mountCt(ct, s, ed) {
+  const box = $("#hsCt"); if (!box) return;
+  const draw = () => {
+    const open = [...box.querySelectorAll("details.hs-hk")].map(d => d.open);
+    box.innerHTML = ctdtHTML(ct, s, ed);
+    if (open.length) box.querySelectorAll("details.hs-hk").forEach((d, i) => { if (open[i] !== undefined) d.open = open[i]; });
+  };
+  const put = async (k, patch) => {
+    const v = { ...((s.hocTap || {})[k] || {}), ...patch, at: nowISO(), by: myEmail() };
+    s.hocTap = { ...(s.hocTap || {}), [k]: v };
+    try { await setDoc(doc(db, "pna_hoso", s.mssv), { hocTap: { [k]: v }, updated: nowISO(), by: myEmail() }, { merge: true }); ALL = null; }
+    catch (e) { P.toast("Chưa lưu được: " + e.message, "err"); }
+  };
+  draw();
+  if (!ed) return;
+  box.addEventListener("click", async e => {
+    const c = e.target.closest(".hs-ck.ed"); if (!c) return;
+    const k = c.dataset.k, cur = ((s.hocTap || {})[k] || {}).tt || "";
+    const tt = cur === c.dataset.tt ? "" : c.dataset.tt;
+    s.hocTap = { ...(s.hocTap || {}), [k]: { ...((s.hocTap || {})[k] || {}), tt } }; draw();
+    await put(k, { tt });
+  });
+  box.addEventListener("change", e => { const i = e.target.closest(".hs-gc"); if (i) put(i.dataset.k, { gc: i.value.trim() }); });
+}
+
 async function loadDons(s, own) {
   const out = [];
   let q;
@@ -427,7 +493,8 @@ async function renderCtdt() {
     <div class="grid2"><label class="fld"><span>Mã CTĐT</span><input data-f="id" value="${esc(c.id || "")}"${c.id ? " disabled" : ""} placeholder="LUAT-2023"></label><label class="fld"><span>Tên chương trình</span><input data-f="ten" value="${esc(c.ten || "")}" placeholder="Cử nhân Luật — áp dụng từ khóa 2023"></label>
     <label class="fld"><span>Ngành</span><input data-f="nganh" value="${esc(c.nganh || "")}"></label><label class="fld"><span>Áp dụng cho khóa (cách nhau dấu phẩy)</span><input data-f="khoa" value="${esc((c.khoa || []).join(", "))}"></label>
     <label class="fld"><span>Tổng số tín chỉ</span><input data-f="tongTC" value="${esc(c.tongTC || "")}"></label><label class="fld"><span>Đường link văn bản CTĐT (kho tài liệu / Drive)</span><input data-f="link" value="${esc(c.link || "")}"></label></div>
-    <label class="fld"><span>Kế hoạch đào tạo — mỗi dòng một học phần: <code>Học kỳ | Mã HP | Tên học phần | Số TC | Bắt buộc/Tự chọn</code></span><textarea data-f="keHoach" rows="8">${esc((c.keHoach || []).map(h => [h.hk, h.ma, h.ten, h.tc, h.loai].join(" | ")).join("\n"))}</textarea></label>
+    <label class="fld"><span>Số tín chỉ từng học kỳ (cách nhau dấu phẩy, theo thứ tự HK I, II, …)</span><input data-f="hocKy" value="${esc((c.hocKy || []).map(h => h.tc).join(", "))}"></label>
+    <label class="fld"><span>Kế hoạch đào tạo — mỗi dòng một học phần: <code>Học kỳ | Mã HP | Tên học phần | Số TC | Loại (BB bắt buộc / TC tự chọn / DK điều kiện) | Nhóm tự chọn | Mã HP tiên quyết | Ghi chú</code></span><textarea data-f="keHoach" rows="10">${esc((c.keHoach || []).map(h => [h.hk, h.ma, h.ten, h.tc, h.loai, h.nhom || "", (h.tq || []).join(" "), h.ghiChu || ""].join(" | ").replace(/( \| )+$/, "")).join("\n"))}</textarea></label>
     ${a ? `<div class="dlg-act" style="justify-content:flex-start"><button type="button" class="btn primary" data-ctsave>Lưu</button>${c.id ? `<button type="button" class="btn danger" data-ctdel>Xóa</button>` : ""}</div>` : ""}</details>`;
   page("Chương trình đào tạo", `<p class="tt-note">Mỗi lớp gắn một chương trình đào tạo (ở trang lớp). Hồ sơ sinh viên hiện kế hoạch học tập theo học kỳ để cố vấn tư vấn đăng ký học phần, học lại, học cải thiện, học vượt.</p>
     <div id="ctList">${list.map(card).join("")}${a ? card({}, list.length) : ""}</div><p class="err" id="ctErr"></p>`, [["sv", "Hồ sơ sinh viên"], [null, "Chương trình đào tạo"]]);
@@ -436,8 +503,16 @@ async function renderCtdt() {
     const det = b.closest("details"), f = k => det.querySelector(`[data-f="${k}"]`).value.trim();
     const id = f("id").toUpperCase().replace(/\s+/g, "-");
     if (!/^[A-Z0-9._-]{2,40}$/.test(id)) return $("#ctErr").textContent = "Mã CTĐT gồm chữ không dấu, số, dấu gạch.";
-    const keHoach = f("keHoach").split(/\n+/).map(x => x.split("|").map(c => c.trim())).filter(r => r.length >= 3 && r[2]).map(r => ({ hk: r[0], ma: r[1], ten: r[2], tc: r[3] || "", loai: r[4] || "" }));
-    try { await setDoc(doc(db, "pna_ctdt", id), { ten: f("ten"), nganh: f("nganh"), khoa: f("khoa").split(/[,;\s]+/).filter(Boolean), tongTC: f("tongTC"), link: f("link"), keHoach, updated: nowISO(), by: myEmail() }); P.toast("Đã lưu " + id + ".", "ok"); renderCtdt(); }
+    const slug = t => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/gi, "d").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40);
+    const old = list.find(x => x.id === id) || {};
+    const keHoach = f("keHoach").split(/\n+/).map(x => x.split("|").map(c => c.trim())).filter(r => r.length >= 3 && r[2]).map(r => {
+      const loai = /^t/i.test(r[4] || "") ? "TC" : /^(d|đ)/i.test(r[4] || "") ? "DK" : "BB";
+      const same = (old.keHoach || []).find(o => String(o.hk) === String(+r[0] || r[0]) && o.ten === r[2] && !o.ma);   // giữ khóa cũ để không mất tiến độ đã đánh dấu
+      return { hk: +r[0] || r[0], ma: r[1], ten: r[2], tc: +r[3] || 0, loai, nhom: r[5] || "", tq: (r[6] || "").split(/[,;\s]+/).filter(Boolean), ghiChu: r[7] || "", k: r[1] || (same && same.k) || `hk${r[0]}-${slug(r[2])}` };
+    });
+    const hocKy = f("hocKy").split(/[,;\s]+/).filter(Boolean).map((t, i) => ({ hk: i + 1, tc: +t || 0, ghiChu: ((old.hocKy || [])[i] || {}).ghiChu || "" }));
+    const { id: _x, ...keep } = old;
+    try { await setDoc(doc(db, "pna_ctdt", id), { ...keep, ten: f("ten"), nganh: f("nganh"), khoa: f("khoa").split(/[,;\s]+/).filter(Boolean), tongTC: f("tongTC"), link: f("link"), hocKy, keHoach, updated: nowISO(), by: myEmail() }); P.toast("Đã lưu " + id + ".", "ok"); renderCtdt(); }
     catch (e) { $("#ctErr").textContent = "Chưa lưu được: " + e.message; }
   });
   document.querySelectorAll("[data-ctdel]").forEach(b => b.onclick = async () => {

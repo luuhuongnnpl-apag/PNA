@@ -173,7 +173,9 @@ service cloud.firestore {
       allow list: if signedIn() && (isAdmin() || inNd('khoa') || me() in resource.data.get('cvht', []));
       allow create, delete: if isAdmin();
       allow update: if isAdmin() || (me() in resource.data.get('cvht', [])
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['trangThai', 'sdt', 'emailLienHe', 'queQuan', 'chucVu', 'chucVuNam', 'suKien', 'drl', 'email', 'updated', 'by']));
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['trangThai', 'sdt', 'emailLienHe', 'queQuan', 'chucVu', 'chucVuNam', 'suKien', 'drl', 'email', 'hocTap', 'updated', 'by']))
+        // sinh viên tự đánh dấu tiến độ học tập theo CTĐT
+        || (ownHoso(id) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hocTap', 'updated', 'by']));
       // Ghi chú nội bộ của cố vấn học tập: sinh viên không xem được
       match /noibo/{n} {
         allow read, write: if signedIn() && (isAdmin()
