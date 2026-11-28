@@ -1,5 +1,6 @@
 # Nhật ký đồng bộ Firebase (tự động)
 
+- 2026-11-28 15:44 UTC — Đã đăng firestore.rules mới.
 - 2026-11-28 15:00 UTC — Đã đăng firestore.rules mới.
 - 2026-11-28 15:00 UTC — Nhập 20261128T150005-ck.enc: Chuyển toàn bộ tài liệu, thư mục sang Công khai — Chuyển Công khai: 0 tài liệu/thư mục ‖ Đếm: pna_accounts 119, pna_sv 119, pna_hoso 868, pna_lop 18, pna_ctdt 4 ‖ Authentication: 121 người dùng, 119 tài khoản tên đăng nhập; nhà cung cấp: password, google.com.
 - 2026-11-28 14:47 UTC — Đã đăng firestore.rules mới.
