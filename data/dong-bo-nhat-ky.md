@@ -1,5 +1,6 @@
 # Nhật ký đồng bộ Firebase (tự động)
 
+- 2026-11-28 14:14 UTC — Đã đăng firestore.rules mới.
 - 2026-11-28 13:47 UTC — Đã đăng firestore.rules mới.
 - 2026-11-28 13:31 UTC — Nhập 20261128T133047-ctdt2.enc: CTĐT chuẩn: Luật 2023, Thanh tra 2023 (khóa 2023–2024), Luật 2025, Thanh tra 2025 (khóa 2025–2026); gán 18 lớp — 22 thao tác ghi.
 - 2026-11-28 06:45 UTC — Đã đăng firestore.rules mới.
