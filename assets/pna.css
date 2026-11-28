@@ -45,10 +45,13 @@ body.is-admin .sbtn.admin-only{display:block!important}
 .hero-sub{margin:6px 0 0;font:700 clamp(10.5px,1.3vw,13px)/1.3 var(--sans);letter-spacing:.14em;color:var(--navy-l)}
 
 /* ---------- Bố cục ---------- */
-.layout{max-width:1320px;margin:26px auto;padding:0 24px;display:grid;grid-template-columns:290px minmax(0,1fr);grid-template-rows:auto 1fr;grid-template-areas:"nav content" "extra content";gap:0 30px;align-items:start}
-.side-nav{grid-area:nav}
-.side-extra{grid-area:extra;display:flex;flex-direction:column;gap:18px;margin-top:18px}
-.content{grid-area:content;min-width:0}
+.layout{max-width:1320px;margin:26px auto;padding:0 24px;display:grid;grid-template-columns:290px minmax(0,1fr);gap:0 30px;align-items:start}
+.layout.has-r{max-width:1520px;grid-template-columns:270px minmax(0,1fr) 290px;gap:0 26px}
+.pcol{display:flex;flex-direction:column;gap:18px;min-width:0}
+#colR{display:none}
+.layout.has-r #colR{display:flex}
+.side-nav{min-width:0}
+.content{min-width:0}
 .sec-title{font:700 19px/1.3 var(--sans);color:var(--navy);margin:0 0 18px;padding-bottom:10px;position:relative}
 .sec-title::after{content:"";position:absolute;left:0;bottom:0;width:105px;height:3px;background:var(--navy)}
 
@@ -301,13 +304,16 @@ div:not(.cards)>.add-folder{min-height:0;width:auto;padding:8px 16px;border-radi
 
 /* ---------- Màn hình nhỏ ---------- */
 @media (max-width:1000px){
-  .layout{grid-template-columns:minmax(0,1fr);grid-template-areas:"nav" "content" "extra";gap:0;margin-top:18px}
+  .layout,.layout.has-r{grid-template-columns:minmax(0,1fr);gap:0;margin-top:18px}
+  .pcol,.layout.has-r #colR{display:contents}
+  .pcol>*{order:3;margin-top:18px}
+  .pcol>.side-nav{order:1;margin-top:0}
+  .layout>.content{order:2}
   .side-nav .sec-title{display:none}
   .catnav{flex-direction:row;flex-wrap:nowrap;overflow-x:auto;padding:6px;gap:6px;margin-bottom:18px;scrollbar-width:thin}
   .cat{white-space:nowrap;width:auto;flex:none;border:1px solid var(--line)}
   .cat .n{display:none}
   .subnav{display:none}
-  .side-extra{margin-top:28px}
   .doc-detail{grid-template-columns:1fr}
   .doc-preview,.doc-preview iframe{min-height:48vh}
 }
@@ -762,3 +768,55 @@ body.ai-open .ai-fab{display:none}
   body.tt-print{background:#fff}
   #ttPrintHost .a4{box-shadow:none;width:210mm;min-height:auto;margin:0;padding:20mm 18mm 18mm 30mm}
 }
+
+/* ---------- Trang chủ: Tin mới ---------- */
+.news .note-bar{margin-bottom:14px}
+.nw{cursor:pointer;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:var(--sh);overflow:hidden;transition:box-shadow .15s,transform .15s;outline-offset:2px}
+.nw:hover{box-shadow:var(--sh-h);transform:translateY(-1px)}
+.nw:hover .nw-title{color:var(--navy)}
+.nw-img{position:relative;display:block;overflow:hidden;background:linear-gradient(135deg,var(--c1),var(--c2));aspect-ratio:16/9}
+.nw-img img{position:absolute;inset:0;width:100%;height:100%}
+.nw-img .nw-ph{inset:auto;left:50%;top:50%;width:64px;height:64px;transform:translate(-50%,-50%);border-radius:50%;background:#fff;padding:4px;object-fit:contain;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.nw-real{object-fit:cover;background:#fff}
+.nw-body{padding:12px 14px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.nw-meta{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted)}
+.nw-cat{color:var(--forest);font-weight:600}
+.nw-title{margin:0;font:700 15.5px/1.4 var(--sans);color:var(--ink);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.nw-sum{margin:0;font-size:13.5px;line-height:1.55;color:#3f4652;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.nw-lead{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);margin-bottom:18px}
+.nw-lead .nw-img{aspect-ratio:auto;min-height:250px}
+.nw-lead .nw-body{padding:20px 22px;justify-content:center;gap:10px}
+.nw-lead .nw-title{font:900 21px/1.35 var(--serif);-webkit-line-clamp:4}
+.nw-lead .nw-sum{font-size:14.5px;-webkit-line-clamp:6}
+.nw-more{margin-top:4px;font-weight:700;font-size:13.5px;color:var(--navy)}
+.nw-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.nw-sub{margin:26px 0 12px;font:700 14px/1.3 var(--sans);color:var(--navy);text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid var(--line);padding-bottom:8px}
+.nw-list{display:flex;flex-direction:column;gap:12px}
+.nw-row{display:grid;grid-template-columns:170px minmax(0,1fr)}
+.nw-row .nw-img{aspect-ratio:auto;min-height:104px}
+.nw-row .nw-sum{-webkit-line-clamp:2}
+.nw-foot{text-align:center;margin-top:18px}
+@media (max-width:760px){
+  .nw-lead{grid-template-columns:1fr}
+  .nw-lead .nw-img{aspect-ratio:16/9;min-height:0}
+  .nw-lead .nw-body{padding:14px}
+  .nw-lead .nw-title{font-size:18px}
+  .nw-grid{grid-template-columns:1fr}
+  .nw-row{grid-template-columns:112px minmax(0,1fr)}
+  .nw-row .nw-body{padding:9px 11px}
+  .nw-row .nw-title{font-size:14px}
+  .nw-row .nw-sum{display:none}
+}
+.tin-chk{background:#fff7e6;border:1px solid #f1d9a6;border-radius:6px;padding:8px 10px}
+
+/* ---------- Sắp xếp bố cục (kéo thả các ô) ---------- */
+body.arrange .layout #colR{display:flex;min-height:220px;border:2px dashed #9fb3cc;border-radius:8px;padding:8px;background:rgba(30,98,208,.04)}
+body.arrange .layout #colR:empty::before{content:"Thả ô vào đây để tạo cột bên phải";margin:auto;color:var(--muted);font-size:13px;text-align:center;padding:20px}
+body.arrange #toolsCol{border:2px dashed #9fb3cc;border-radius:8px;padding:8px;background:rgba(30,98,208,.04);min-height:220px}
+body.arrange .pcol>*{position:relative;cursor:grab;outline:2px dashed var(--accent);outline-offset:2px}
+body.arrange .pcol>*::after{content:"⠿ Kéo để di chuyển";position:absolute;top:-11px;right:8px;background:var(--accent);color:#fff;font:600 11px/1 var(--sans);padding:4px 7px;border-radius:10px;z-index:2}
+body.arrange .pcol>* *{pointer-events:none}
+body.arrange .pcol>.arr-drag{opacity:.45}
+.arr-bar{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.2);padding:10px 14px;max-width:calc(100vw - 24px)}
+.arr-bar span{font-size:13px;color:var(--muted)}
+.arr-bar[hidden]{display:none}

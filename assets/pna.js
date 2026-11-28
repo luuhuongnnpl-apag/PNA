@@ -543,27 +543,47 @@ function route() {
 }
 const go = h => { if (location.hash.slice(1) === h) route(); else location.hash = h; };
 
-/* ---------- Trang chủ ---------- */
-function renderHome() {
-  const stars = thongDung.filter(s => isAdmin || !CAT[s.cat] || !CAT[s.cat].adminOnly);
-  const starDocs = stars.map(s => items[s.id]).filter(f => f && canList(f));
-  const starHTML = starDocs.length
-    ? `<div class="docs-grid">${starDocs.map(f => docCardHTML(f, true)).join("")}</div>`
-    : stars.length
-      ? `<div class="star-list">${stars.map(s => `<button type="button" class="star-item" data-star="${esc(s.id)}"><span class="st">★</span><span>${esc(s.name)}<small>${esc(CAT[s.cat] ? CAT[s.cat].name : "")}</small></span></button>`).join("")}</div>`
-      : `<p class="empty">Tài liệu được đánh dấu ★ sẽ hiện ở đây.${isAdmin ? " (Đánh dấu khi tải lên hoặc bấm Sửa ở tài liệu.)" : ""}</p>`;
-  const catCards = visibleCats().map(c => {
-    const n = catCount(c.key);
-    return `<div class="card-wrap"><button type="button" class="card" data-cat="${c.key}"><span class="cv">${c.imageUrl ? `<img src="${esc(c.imageUrl)}" alt="Ảnh bìa ${esc(c.name)}" loading="lazy" referrerpolicy="no-referrer">` : cover(c.icon, c.color)}</span><span class="nm">${esc(c.name)}</span></button>${isAdmin ? `<span class="ftools cat-tools"><button type="button" title="Thêm/đổi ảnh bìa bộ sưu tập" data-catimg="${c.key}">▧</button></span>` : ""}</div>`;
-  }).join("");
-  const recent = loaded.items
-    ? Object.values(items).filter(f => canList(f) && f.cat !== "cho").sort((a, b) => String(b.added || b.modified || "").localeCompare(String(a.added || a.modified || ""))).slice(0, 10)
-    : [];
-  $("#main").innerHTML = `
-    <section class="box"><h2 class="box-title">Thông dụng ★</h2>${starHTML}</section>
-    <section class="box"><h2 class="box-title">Danh mục thư viện</h2><div class="cards">${catCards}</div></section>
-    ${recent.length ? `<section class="box"><h2 class="box-title">Mới cập nhật</h2><div class="docs-grid">${recent.map(f => docCardHTML(f, true)).join("")}</div></section>` : ""}`;
+/* ---------- Trang chủ: TIN MỚI (tài liệu đánh dấu ★ "Đăng lên Tin mới": tên, tóm tắt, ảnh) ---------- */
+let newsShown = 12;
+const NEWS_STEP = 12;
+const newsTime = f => String(f.tinAt || f.added || f.modified || "");
+const newsDate = f => { const t = newsTime(f).slice(0, 10); return t ? fmtDate(t) : ""; };
+function newsImg(f) {
+  const id = driveIdOf(f);
+  const url = f.coverUrl || f.thumbUrl || (id && f.shared !== false && !f.locked ? "https://drive.google.com/thumbnail?id=" + encodeURIComponent(id) + "&sz=w800" : "");
+  const cat = CAT[f.cat] || CAT.khac;
+  return `<span class="nw-img" style="--c1:${cat.color[0]};--c2:${cat.color[1] || cat.color[0]}"><img class="nw-ph" src="./assets/logo.png" alt="">${url ? `<img class="nw-real" src="${esc(url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}</span>`;
 }
+function newsMeta(f) {
+  const cat = CAT[f.cat];
+  return `<span class="nw-meta">${newsDate(f) ? `<span>🕒 ${esc(newsDate(f))}</span>` : ""}${cat ? `<span class="nw-cat">${esc(cat.name)}</span>` : ""}${f.number ? `<span>${esc(f.number)}</span>` : ""}</span>`;
+}
+const newsSum = f => esc(String(f.note || "").replace(/\s+/g, " ").trim());
+function newsItemHTML(f, kind) {
+  const sum = newsSum(f);
+  return `<article class="nw nw-${kind}" data-doc="${esc(f.id)}" tabindex="0" role="button" aria-label="${esc(f.name)}">${newsImg(f)}<div class="nw-body">${newsMeta(f)}<h3 class="nw-title">${esc(f.name)}</h3>${sum ? `<p class="nw-sum">${sum}</p>` : ""}${kind === "lead" ? `<span class="nw-more">Xem chi tiết →</span>` : ""}</div></article>`;
+}
+function renderHome() {
+  const flagged = loaded.items ? Object.values(items).filter(f => f.star && canList(f)) : [];
+  const fallback = !flagged.length;
+  const list = (fallback ? (loaded.items ? Object.values(items).filter(f => canList(f) && f.cat !== "cho" && f.cat !== "bst-ghi-chu") : []) : flagged)
+    .sort((a, b) => newsTime(b).localeCompare(newsTime(a)));
+  /* Tin đã đăng nhưng tài khoản hiện tại chưa mở được */
+  const lockedStars = thongDung.filter(s => !items[s.id] && (isAdmin || !CAT[s.cat] || !CAT[s.cat].adminOnly));
+  const shown = list.slice(0, newsShown);
+  const lead = shown[0], mid = shown.slice(1, 5), rest = shown.slice(5);
+  let body;
+  if (!list.length) body = `<p class="empty">${loaded.items ? "Chưa có tin nào." + (can("edit") ? " Khi tải lên hoặc bấm Sửa ở tài liệu, chọn <b>Đăng lên mục TIN MỚI</b> và điền tóm tắt, ảnh của văn bản." : "") : "Đang tải tin…"}</p>`;
+  else body = (fallback && can("edit") ? `<p class="note-bar">Chưa có tài liệu nào được đăng lên Tin mới — đang hiện các tài liệu mới cập nhật. Bấm <b>Sửa</b> ở tài liệu, chọn <b>Đăng lên mục TIN MỚI</b> để chọn tin hiển thị.</p>` : "")
+    + newsItemHTML(lead, "lead")
+    + (mid.length ? `<div class="nw-grid">${mid.map(f => newsItemHTML(f, "card")).join("")}</div>` : "")
+    + (rest.length ? `<h3 class="nw-sub">Tin trước đó</h3><div class="nw-list">${rest.map(f => newsItemHTML(f, "row")).join("")}</div>` : "")
+    + (list.length > newsShown ? `<div class="nw-foot"><button type="button" class="btn" id="newsMore">Xem thêm tin (${list.length - newsShown})</button></div>` : "");
+  const lockHTML = lockedStars.length ? `<h3 class="nw-sub">Tin dành cho người đã đăng nhập</h3><div class="star-list">${lockedStars.slice(0, 12).map(s => `<button type="button" class="star-item" data-star="${esc(s.id)}"><span class="st">🔒</span><span>${esc(s.name)}<small>${esc(CAT[s.cat] ? CAT[s.cat].name : "")}</small></span></button>`).join("")}</div>` : "";
+  $("#main").innerHTML = `<section class="box news"><h2 class="box-title">Tin mới</h2>${body}${lockHTML}</section>`;
+  const more = $("#newsMore"); if (more) more.onclick = () => { newsShown += NEWS_STEP; renderHome(); };
+}
+document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.classList && e.target.classList.contains("nw")) { e.preventDefault(); e.target.click(); } });
 
 /* ---------- Trang danh mục & thư mục ---------- */
 function requireAccess(key) {
@@ -751,7 +771,7 @@ function admBtns(f) {
     (canUp() && driveIdOf(f) && f.shared === false ? '<div class="sh-warn">Chưa mở chia sẻ xem</div>' : "");
 }
 function docCardHTML(f, noSort) {
-  return `<article class="doc-card${f.locked ? " locked" : ""}" ${sortAttrs(f, noSort)}>${f.star ? '<span class="badge-star" title="Thông dụng">★</span>' : ""}<div class="doc-cover" data-doc="${esc(f.id)}" title="Xem chi tiết">${bookHTML(f)}</div><button type="button" class="doc-title" data-doc="${esc(f.id)}" title="${esc(f.name)}">${esc(f.name)}</button><div class="doc-meta">${metaLine(f)}${f.hit ? '<span class="muted">khớp nội dung</span>' : ""}</div><button type="button" class="btn-detail" data-doc="${esc(f.id)}">${f.locked ? "🔒 Chi tiết" : (f.isNote || fmtOf(f) === "note" ? "✎ Mở & Soạn thảo" : "Chi tiết")}</button>${admBtns(f)}</article>`;
+  return `<article class="doc-card${f.locked ? " locked" : ""}" ${sortAttrs(f, noSort)}>${f.star ? '<span class="badge-star" title="Đã đăng lên Tin mới">★</span>' : ""}<div class="doc-cover" data-doc="${esc(f.id)}" title="Xem chi tiết">${bookHTML(f)}</div><button type="button" class="doc-title" data-doc="${esc(f.id)}" title="${esc(f.name)}">${esc(f.name)}</button><div class="doc-meta">${metaLine(f)}${f.hit ? '<span class="muted">khớp nội dung</span>' : ""}</div><button type="button" class="btn-detail" data-doc="${esc(f.id)}">${f.locked ? "🔒 Chi tiết" : (f.isNote || fmtOf(f) === "note" ? "✎ Mở & Soạn thảo" : "Chi tiết")}</button>${admBtns(f)}</article>`;
 }
 function rowHTML(f, withPath) {
   const notes = noteHTML(f), k = fmtOf(f);
@@ -2224,7 +2244,7 @@ async function publicList(id) {
   } while (page);
   return out;
 }
-const META = ["thumbUrl", "thumbFileId", "thumbTry", "issuer", "number", "issued", "effective", "status", "note", "star", "added", "access", "coverUrl", "coverFileId", "isNote", "noteContent", "noteTabs", "notePage", "attachedNotes", "linkedDocId", "linkedDocName", "fmime"];
+const META = ["thumbUrl", "thumbFileId", "thumbTry", "issuer", "number", "issued", "effective", "status", "note", "star", "added", "access", "coverUrl", "coverFileId", "tinAt", "isNote", "noteContent", "noteTabs", "notePage", "attachedNotes", "linkedDocId", "linkedDocName", "fmime"];
 const TREE_KEEP = ["order", "imageUrl", "imageFileId", "access", "desc"];
 async function loadLive() {
   if (!settings || !CFG.DRIVE_KEY || !canUp()) return false;
@@ -2501,7 +2521,7 @@ function dropAfter(row, e) {
 
 function setBusy(sel, on, label) { const b = $(sel); if (b) { b.disabled = on; b.textContent = label; } }
 
-/* ---------- Thông dụng ---------- */
+/* ---------- Danh sách tin (pna_settings/thongdung: giữ tên cũ để tương thích dữ liệu) ---------- */
 async function syncStar(f) {
   const rest = thongDung.filter(s => s.id !== f.id);
   thongDung = f.star ? [{ id: f.id, name: f.name, cat: f.cat, parent: f.parent }].concat(rest) : rest;
@@ -2629,6 +2649,7 @@ async function submitUpload(e) {
   let parent = $("#upFolder").value; const key = tree[parent] ? tree[parent].cat : "";
   const nameIn = $("#upName").disabled ? "" : $("#upName").value.trim(), newF = $("#upNewFolder").value.trim();
   const meta = { ...metaFrom("#up"), access: upLevel };
+  if (meta.star) meta.tinAt = new Date().toISOString();
   const links = parseBulk($("#upLinks").value);
   const err = m => { $("#upErr").textContent = m; };
   if (!parent || !key) return err("Chọn thư mục lưu.");
@@ -2717,6 +2738,7 @@ function openEdit(id) {
 async function submitEdit(e) {
   e.preventDefault(); const f = items[editing]; if (!f) return;
   const patch = { id: f.id, cat: f.cat, parent: f.parent, link: f.link || "", mime: f.mime || "", ...metaFrom("#ed"), access: $("#edAccess").value, name: $("#edName").value.trim() || f.name };
+  if (patch.star && !f.star) patch.tinAt = new Date().toISOString();
   const toMat = patch.access === "mat" && levelOf(f) !== "mat";
   const btn = $("#edGo"); btn.disabled = true;
   try {

@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@700;900&family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./assets/pna.css?v=20261128t">
+<link rel="stylesheet" href="./assets/pna.css?v=20261128u">
 </head>
 <body>
 <header class="top">
@@ -41,26 +41,17 @@
 </section>
 
 <div class="layout" id="layout">
-  <aside class="side-nav" aria-label="Danh mục thư viện">
+  <div class="pcol side-extra" id="toolsCol" data-col="L" aria-label="Cột trái">
+  <aside class="side-nav" data-box="nav" aria-label="Danh mục thư viện">
     <h2 class="sec-title">DANH MỤC</h2>
     <nav id="catNav" class="catnav"></nav>
   </aside>
 
-  <div class="content">
-    <h2 class="sec-title">DANH MỤC TÀI LIỆU CỐ VẤN HỌC TẬP</h2>
-    <form id="searchForm" class="searchbar" role="search">
-      <input id="searchInput" type="search" placeholder="Tìm theo tên, số hiệu, cơ quan ban hành và trong nội dung tệp… (đặt trong ngoặc kép để tìm đúng cụm từ)" aria-label="Tìm kiếm tài liệu">
-      <button type="submit">TÌM</button>
-    </form>
-    <main id="main" class="main"></main>
-  </div>
-
-  <aside class="side-extra" id="toolsCol" aria-label="Tổng quan và công cụ">
-    <section class="sbox">
+    <section class="sbox" data-box="tongquan">
       <h3 class="sbox-title">TỔNG QUAN HỆ THỐNG</h3>
       <dl id="stats" class="stats"></dl>
     </section>
-    <section class="sbox">
+    <section class="sbox" data-box="congcu">
       <h3 class="sbox-title">CÔNG CỤ</h3>
       <button type="button" class="sbtn primary" id="btnAI" data-perm="ai">Hỏi trợ lý AI</button>
       <button type="button" class="sbtn" id="btnRec" data-perm="rec" style="border-color:#b91c1c;color:#b91c1c">🎙 Ghi âm cuộc họp</button>
@@ -74,15 +65,28 @@
         <button type="button" class="sbtn" id="btnShare" data-perm="kho">Mở chia sẻ xem tài liệu</button>
         <button type="button" class="sbtn" id="btnThumbs" data-perm="kho">Tạo ảnh bìa từ trang đầu</button>
         <button type="button" class="sbtn admin-only" id="btnSource">Thêm nguồn Drive</button>
+        <button type="button" class="sbtn admin-only" id="btnLayout">⇄ Sắp xếp bố cục trang</button>
         <p class="muted" id="adminNote"></p>
       </div>
     </section>
-    <section class="sbox">
+    <section class="sbox" data-box="lienket">
       <h3 class="sbox-title">LIÊN KẾT</h3>
       <div id="linkList" class="linklist"></div>
     </section>
-  </aside>
+  </div>
+
+  <div class="content">
+    <h2 class="sec-title">TIN MỚI &amp; TÀI LIỆU CỐ VẤN HỌC TẬP</h2>
+    <form id="searchForm" class="searchbar" role="search">
+      <input id="searchInput" type="search" placeholder="Tìm theo tên, số hiệu, cơ quan ban hành và trong nội dung tệp… (đặt trong ngoặc kép để tìm đúng cụm từ)" aria-label="Tìm kiếm tài liệu">
+      <button type="submit">TÌM</button>
+    </form>
+    <main id="main" class="main"></main>
+  </div>
+
+  <div class="pcol side-extra" id="colR" data-col="R" aria-label="Cột phải"></div>
 </div>
+<div class="arr-bar" id="arrBar" hidden><b>Sắp xếp bố cục</b><span>Kéo các ô sang cột trái hoặc cột phải, thả vào vị trí muốn đặt.</span><button type="button" class="btn" id="arrReset">Mặc định</button><button type="button" class="btn" id="arrCancel">Hủy</button><button type="button" class="btn primary" id="arrSave">Lưu cho mọi người</button></div>
 
 <div class="mob-acts" id="mobActs" aria-label="Thao tác"></div>
 <footer class="foot"><b>HỆ THỐNG CỐ VẤN HỌC TẬP</b> • Công cụ hỗ trợ cố vấn học tập, không phải cổng thông tin chính thức của Học viện</footer>
@@ -127,6 +131,15 @@
     <label class="fld"><span>Tên văn bản</span><input id="upName" list="nameList" autocomplete="off"></label>
     <datalist id="nameList"></datalist>
     <p class="hint auto" id="upAuto" aria-live="polite"></p>
+    <label class="fld"><span>Tóm tắt thông tin <small class="muted">(hiện dưới tiêu đề ở bản tin)</small></span><textarea id="upNote" rows="3" placeholder="Vài câu nêu nội dung chính, đối tượng áp dụng, thời hạn cần lưu ý…"></textarea></label>
+    <div class="fld"><span>Ảnh của văn bản <small class="muted">(ảnh đại diện khi đăng tin; để trống: dùng trang đầu của tệp)</small></span>
+      <div class="cover-pick" id="upCover" tabindex="0" role="button" aria-label="Chọn ảnh của văn bản">
+        <span class="cp-prev"></span>
+        <span class="cp-text"><b>Kéo thả ảnh, dán (Ctrl+V) hoặc bấm để chọn</b><small>JPG, PNG, WebP — tối đa 12 MB</small></span>
+        <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+      </div>
+    </div>
+    <label class="fld chk tin-chk"><input type="checkbox" id="upStar"><span>Đăng lên mục <b>TIN MỚI</b> ở trang chủ</span></label>
     <div class="fld"><span>Mức truy cập</span><div class="seg" id="upAccess" role="group" aria-label="Mức truy cập"></div><small class="muted" id="upLvHint"></small></div>
     <details class="more" id="upMore"><summary>Thông tin bổ sung (không bắt buộc)</summary>
       <div class="grid2">
@@ -135,17 +148,8 @@
         <label class="fld"><span>Ngày ban hành</span><input id="upIssued" type="date"></label>
         <label class="fld"><span>Hiệu lực từ ngày</span><input id="upEffective" type="date"></label>
         <label class="fld"><span>Tình trạng hiệu lực</span><select id="upStatus"><option value="">—</option><option>Còn hiệu lực</option><option>Hết hiệu lực</option><option>Hết hiệu lực một phần</option><option>Chưa có hiệu lực</option><option>Dự thảo</option><option>Không áp dụng</option></select></label>
-        <label class="fld chk"><input type="checkbox" id="upStar"><span>Đưa vào mục THÔNG DỤNG ★</span></label>
       </div>
-      <label class="fld"><span>Ghi chú / tóm tắt nội dung</span><textarea id="upNote" rows="2"></textarea></label>
       <label class="fld" id="newFolderWrap"><span>Tạo thư mục mới bên trong thư mục đã chọn (để trống nếu không cần)</span><input id="upNewFolder" placeholder="Ví dụ: Luật Đất đai 2024 và các văn bản hướng dẫn thi hành"></label>
-      <div class="fld"><span>Ảnh bìa riêng (để trống: dùng trang đầu của tệp)</span>
-        <div class="cover-pick" id="upCover" tabindex="0" role="button" aria-label="Chọn ảnh bìa">
-          <span class="cp-prev"></span>
-          <span class="cp-text"><b>Kéo thả ảnh, dán (Ctrl+V) hoặc bấm để chọn</b><small>JPG, PNG, WebP — tối đa 12 MB</small></span>
-          <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
-        </div>
-      </div>
     </details>
     <p class="err" id="upErr" role="alert"></p><p class="muted" id="upMsg" aria-live="polite"></p>
     <div class="dlg-act">
@@ -171,24 +175,26 @@
   <form method="dialog" class="dlg-in" id="edForm" novalidate>
     <h3>THÔNG TIN TÀI LIỆU</h3>
     <label class="fld"><span>Tên văn bản</span><input id="edName"></label>
-    <div class="grid2">
-      <label class="fld"><span>Cơ quan / người ban hành</span><input id="edIssuer"></label>
-      <label class="fld"><span>Số / ký hiệu</span><input id="edNumber"></label>
-      <label class="fld"><span>Ngày ban hành</span><input id="edIssued" type="date"></label>
-      <label class="fld"><span>Hiệu lực từ ngày</span><input id="edEffective" type="date"></label>
-      <label class="fld"><span>Tình trạng hiệu lực</span><select id="edStatus"><option value="">—</option><option>Còn hiệu lực</option><option>Hết hiệu lực</option><option>Hết hiệu lực một phần</option><option>Chưa có hiệu lực</option><option>Dự thảo</option><option>Không áp dụng</option></select></label>
-      <label class="fld chk"><input type="checkbox" id="edStar"><span>THÔNG DỤNG ★</span></label>
-    </div>
-    <label class="fld"><span>Mức truy cập</span><select id="edAccess"></select></label>
-    <label class="fld"><span>Ghi chú / tóm tắt nội dung</span><textarea id="edNote" rows="2"></textarea></label>
-    <div class="fld"><span>Ảnh bìa tài liệu</span>
-      <div class="cover-pick" id="edCover" tabindex="0" role="button" aria-label="Chọn ảnh bìa">
+    <label class="fld"><span>Tóm tắt thông tin <small class="muted">(hiện dưới tiêu đề ở bản tin)</small></span><textarea id="edNote" rows="3"></textarea></label>
+    <div class="fld"><span>Ảnh của văn bản <small class="muted">(ảnh đại diện khi đăng tin)</small></span>
+      <div class="cover-pick" id="edCover" tabindex="0" role="button" aria-label="Chọn ảnh của văn bản">
         <span class="cp-prev"></span>
         <span class="cp-text"><b>Kéo thả ảnh vào đây, dán (Ctrl+V) hoặc bấm để chọn</b><small>JPG, PNG, WebP — tối đa 12 MB</small></span>
         <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
       </div>
       <button type="button" class="linkish" id="edCoverClear">Xóa ảnh riêng (dùng bìa mặc định)</button>
     </div>
+    <label class="fld chk tin-chk"><input type="checkbox" id="edStar"><span>Đăng lên mục <b>TIN MỚI</b> ở trang chủ</span></label>
+    <details class="more"><summary>Thông tin bổ sung</summary>
+    <div class="grid2">
+      <label class="fld"><span>Cơ quan / người ban hành</span><input id="edIssuer"></label>
+      <label class="fld"><span>Số / ký hiệu</span><input id="edNumber"></label>
+      <label class="fld"><span>Ngày ban hành</span><input id="edIssued" type="date"></label>
+      <label class="fld"><span>Hiệu lực từ ngày</span><input id="edEffective" type="date"></label>
+      <label class="fld"><span>Tình trạng hiệu lực</span><select id="edStatus"><option value="">—</option><option>Còn hiệu lực</option><option>Hết hiệu lực</option><option>Hết hiệu lực một phần</option><option>Chưa có hiệu lực</option><option>Dự thảo</option><option>Không áp dụng</option></select></label>
+    </div>
+    </details>
+    <label class="fld"><span>Mức truy cập</span><select id="edAccess"></select></label>
     <p class="err" id="edErr" role="alert"></p><p class="muted" id="edMsg" aria-live="polite"></p>
     <div class="dlg-act">
       <button type="button" class="btn" data-close>Hủy</button>
@@ -285,7 +291,8 @@
 
 <script src="https://accounts.google.com/gsi/client" async></script>
 <script src="./config.js?v=20261128d"></script>
-<script type="module" src="./assets/pna.js?v=20261128t"></script>
-<script type="module" src="./assets/thutuc.js?v=20261128t"></script>
+<script type="module" src="./assets/pna.js?v=20261128u"></script>
+<script type="module" src="./assets/thutuc.js?v=20261128u"></script>
+<script type="module" src="./assets/bocuc.js?v=20261128u"></script>
 </body>
 </html>
