@@ -91,13 +91,38 @@ async function importOps(data) {
   await commitAll(w);
   return `${w.length} thao tác ghi`;
 }
+/* Chẩn đoán (không ghi dữ liệu cá nhân vào nhật ký) */
+async function chanDoan(data) {
+  const out = [];
+  const cfg = fs.readFileSync(P("config.js"), "utf8"), key = (cfg.match(/apiKey:\s*"([^"]+)"/) || [])[1];
+  if ((data.viec || []).includes("dang-ky")) {
+    const em = "chandoan-" + Date.now() + "@taikhoan.pna";
+    try {
+      const r = await fetch("https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=" + key, { method: "POST", headers: { "Content-Type": "application/json", Referer: "https://luuhuongnnpl-apag.github.io/PNA/", Origin: "https://luuhuongnnpl-apag.github.io" }, body: JSON.stringify({ email: em, password: "Thu12345678", returnSecureToken: true }) });
+      const j = await r.json();
+      out.push("Tạo tài khoản thử (email/mật khẩu): " + (r.ok ? "THÀNH CÔNG" : "LỖI " + r.status + " " + JSON.stringify(j.error && (j.error.message || j.error))));
+      if (r.ok && !process.env.FAKE_DB) { const { getAuth } = await import("firebase-admin/auth"); await getAuth().deleteUser(j.localId); out.push("Đã xóa tài khoản thử."); }
+    } catch (e) { out.push("Tạo tài khoản thử: lỗi gọi " + e.message); }
+  }
+  if ((data.viec || []).includes("dem")) {
+    const cnt = async c => { let n = 0; (await db.collection(c).get()).forEach(() => n++); return n; };
+    out.push(`Đếm: pna_accounts ${await cnt("pna_accounts")}, pna_sv ${await cnt("pna_sv")}, pna_hoso ${await cnt("pna_hoso")}, pna_lop ${await cnt("pna_lop")}, pna_ctdt ${await cnt("pna_ctdt")}`);
+    if (!process.env.FAKE_DB) { const { getAuth } = await import("firebase-admin/auth"); const l = await getAuth().listUsers(1000); out.push(`Authentication: ${l.users.length} người dùng, ${l.users.filter(u => (u.email || "").endsWith("@taikhoan.pna")).length} tài khoản tên đăng nhập; nhà cung cấp: ${[...new Set(l.users.flatMap(u => u.providerData.map(p => p.providerId)))].join(", ")}`); }
+  }
+  if ((data.viec || []).includes("nhat-ky")) {
+    const acts = []; (await db.collection("pna_activity").get()).forEach(d => acts.push(d.data()));
+    acts.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    acts.filter(a => /^(SV_|LOP_|HOSO|DRL)/.test(a.action || "")).slice(0, 15).forEach(a => out.push(`HĐ ${a.at} ${a.action}: ${String(a.detail || "").slice(0, 160)}`));
+  }
+  return out.join(" ‖ ");
+}
 const inbox = P("data", "inbox");
 const files = fs.existsSync(inbox) ? fs.readdirSync(inbox).filter(f => f.endsWith(".enc")).sort() : [];
 for (const f of files) {
   try {
     const data = open(JSON.parse(fs.readFileSync(path.join(inbox, f), "utf8")));
     const by = "dong-bo:" + (data.nguoiGui || "claude");
-    const kq = data.loai === "pna-hoso-sv" ? await importHoso(data, by) : data.loai === "pna-firestore" ? await importOps(data) : (() => { throw new Error("Loại gói không hỗ trợ: " + data.loai); })();
+    const kq = data.loai === "pna-hoso-sv" ? await importHoso(data, by) : data.loai === "pna-firestore" ? await importOps(data) : data.loai === "pna-chan-doan" ? await chanDoan(data) : (() => { throw new Error("Loại gói không hỗ trợ: " + data.loai); })();
     await db.doc("pna_sync/" + f.replace(/[^\w.-]/g, "_")).set({ tep: f, loai: data.loai, moTa: data.moTa || "", ketQua: kq, at: now() });
     fs.unlinkSync(path.join(inbox, f));
     note(`Nhập ${f}: ${data.moTa ? data.moTa + " — " : ""}${kq}.`);
