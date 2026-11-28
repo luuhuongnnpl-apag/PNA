@@ -8,7 +8,7 @@
    Dữ liệu cá nhân KHÔNG đưa lên kho mã GitHub: quản trị nhập tệp JSON ở trang “Nhập dữ liệu sinh viên”.
    ===================================================================== */
 import { doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, collectionGroup, getDocs, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
-import { THU_TUC } from "./thutuc-data.js?v=20261128v";
+import { THU_TUC } from "./thutuc-data.js?v=20261128w";
 
 const P = window.PNA, db = P.db, esc = P.esc;
 const $ = s => document.querySelector(s);

@@ -8,7 +8,7 @@
    không thay thế chữ ký số do tổ chức cung cấp dịch vụ chứng thực cấp. Có ô gắn bản PDF đã ký số.
    ===================================================================== */
 import { doc, getDoc, setDoc, updateDoc, addDoc, deleteDoc, collection, getDocs, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
-import { THU_TUC, STEP_ROLES } from "./thutuc-data.js?v=20261128v";
+import { THU_TUC, STEP_ROLES, TT_VER, HV, KHOA_QL, MAU_QC } from "./thutuc-data.js?v=20261128w";
 
 const P = window.PNA;
 const db = P.db, esc = P.esc;
@@ -57,7 +57,7 @@ function load(force) {
   return (loadP = loadNow());
 }
 async function loadNow() {
-  try { const s = await getDoc(doc(db, "pna_tt_settings", "thutuc")); CFG = s.exists() && Array.isArray(s.data().list) ? s.data().list : THU_TUC.map(t => ({ ...t, active: true })); }
+  try { const s = await getDoc(doc(db, "pna_tt_settings", "thutuc")); CFG = s.exists() && Array.isArray(s.data().list) && s.data().ver === TT_VER ? s.data().list : THU_TUC.map(t => ({ ...t, active: true })); }
   catch (e) { CFG = THU_TUC.map(t => ({ ...t, active: true })); }
   try { const s = await getDoc(doc(db, "pna_tt_settings", "nguoiduyet")); ND = s.exists() ? { khoa: s.data().khoa || [], qldt: s.data().qldt || [] } : { khoa: [], qldt: [] }; } catch (e) {}
   ME = { email: myEmail(), sv: null, lops: [], saved: null };
@@ -169,7 +169,7 @@ function fieldHTML(f, v) {
   }
   const hint = f.hint ? `<small class="muted">${esc(f.hint)}</small>` : "";
   if (f.type === "textarea") return `<label class="fld" data-k="${esc(f.k)}"><span>${esc(f.label)}${star}</span><textarea id="${id}" rows="3"${req}>${esc(v || "")}</textarea>${hint}</label>`;
-  if (f.type === "select") return `<label class="fld" data-k="${esc(f.k)}"><span>${esc(f.label)}${star}</span><select id="${id}"${req}><option value="">— Chọn —</option>${(f.opts || []).map(o => `<option${o === v ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>${hint}</label>`;
+  if (f.type === "select" || f.type === "check") return `<label class="fld" data-k="${esc(f.k)}"><span>${esc(f.label)}${star}</span><select id="${id}"${req}><option value="">— Chọn —</option>${(f.opts || []).map(o => `<option${o === v ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>${hint}</label>`;
   const type = f.type === "date" ? "date" : f.type === "number" ? "number\" step=\"any" : "text";
   return `<label class="fld" data-k="${esc(f.k)}"><span>${esc(f.label)}${star}</span><input id="${id}" type="${type}" value="${esc(v || "")}"${req}>${hint}</label>`;
 }
@@ -217,6 +217,7 @@ async function renderForm(key, editId) {
   if (!t) return page("Không tìm thấy thủ tục", `<p class="empty">Thủ tục này không còn hoặc đã đổi tên.</p>`);
   const info = `<div class="tt-info">
       ${t.canCu ? `<p><b>Căn cứ:</b> ${esc(t.canCu)}</p>` : ""}
+      ${t.mau && t.mau.pl ? `<p><b>Mẫu đơn:</b> ${esc(t.mau.pl)} ${esc(MAU_QC)} (tên cơ quan, thể thức theo ${esc(HV)}).</p>` : ""}
       ${t.huongDan ? `<p><b>Điều kiện, thời hạn:</b> ${esc(t.huongDan)}</p>` : ""}
       ${t.minhChung ? `<p><b>Hồ sơ, minh chứng kèm theo:</b> ${esc(t.minhChung)}</p>` : ""}
       <p><b>Trình tự xử lý trên hệ thống:</b> Sinh viên nộp đơn → ${(t.steps || []).map(r => esc(stepName(typeof r === "string" ? r : r.role))).join(" → ")} → hoàn tất (in hoặc lưu PDF đơn đã duyệt).</p></div>`;
@@ -224,16 +225,17 @@ async function renderForm(key, editId) {
   if (!ME.sv) return page(esc(t.ten), info + `<p class="tt-note">Tài khoản <b>${esc(P.showName(myEmail()))}</b> chưa có hồ sơ sinh viên nên chưa lập đơn được. Liên hệ cố vấn học tập của lớp.</p>`);
   if (!editId && t.active === false) return page(esc(t.ten), info + `<p class="tt-note">Thủ tục này đang tạm dừng nhận đơn trực tuyến.</p>`);
   if (old && (old.sv.email !== myEmail() || old.status !== "bo-sung")) return go("tt-don/" + old.id);
-  const sv = ME.sv, v = old ? old.data || {} : {};
+  const sv = ME.sv, v = old ? old.data || {} : {}, lyMode = t.mau ? (t.mau.lyDo === undefined ? true : t.mau.lyDo) : true;
   const lastReq = old ? [...(old.history || [])].reverse().find(h => h.act === "bo-sung") : null;
   page(esc(t.ten), info + (lastReq ? `<p class="tt-warn"><b>Yêu cầu bổ sung của ${esc(lastReq.name || lastReq.by)}:</b> ${esc(lastReq.note || "")}</p>` : "") + `
     <form id="ttForm" class="tt-form" novalidate>
       <h3 class="tt-h3">1. Thông tin sinh viên</h3>
       <div class="tt-sv">${[["Họ và tên", sv.hoTen], ["Mã sinh viên", sv.mssv], ["Ngày sinh", fmtD(sv.ngaySinh)], ["Lớp", sv.lop], ["Ngành", sv.nganh || ""], ["Khóa", sv.khoa || ""]].map(([a, b]) => `<div><span>${a}</span><b>${esc(b || "—")}</b></div>`).join("")}</div>
-      <label class="fld" style="max-width:320px"><span>Số điện thoại liên hệ <b class="req">*</b></span><input id="ttSdt" value="${esc(old ? old.sv.sdt || "" : sv.sdt || "")}" inputmode="tel"></label>
+      <div class="grid2" style="max-width:680px"><label class="fld"><span>Số điện thoại liên hệ <b class="req">*</b></span><input id="ttSdt" value="${esc(old ? old.sv.sdt || "" : sv.sdt || "")}" inputmode="tel"></label>
+      <label class="fld"><span>Email liên hệ</span><input id="ttEmail" type="email" value="${esc(old ? old.sv.emailLH || "" : sv.emailLienHe || (String(sv.email || "").endsWith("@" + P.ACCT_DOMAIN) ? "" : sv.email || ""))}"></label></div>
       <h3 class="tt-h3">2. Nội dung đề nghị</h3>
       <div class="tt-fields">${(t.fields || []).map(f => fieldHTML(f, v[f.k])).join("")}</div>
-      <label class="fld"><span>Lý do <b class="req">*</b></span><textarea id="ttLyDo" rows="3">${esc(old ? old.lyDo : "")}</textarea></label>
+      ${lyMode === false ? "" : `<label class="fld"><span>${lyMode === "opt" ? "Lý do (nếu có)" : "Lý do"}${lyMode === "opt" ? "" : ' <b class="req">*</b>'}</span><textarea id="ttLyDo" rows="3">${esc(old ? old.lyDo : "")}</textarea></label>`}
       <h3 class="tt-h3">3. Minh chứng kèm theo</h3>
       ${t.minhChung ? `<p class="muted" style="margin-top:-4px">${esc(t.minhChung)}</p>` : ""}
       <label class="fld"><span>Tải tệp (ảnh chụp hoặc PDF, tối đa ${MAX_FILES} tệp, mỗi tệp dưới khoảng 650 KB)</span><input type="file" id="ttFiles" multiple accept="image/*,application/pdf"></label>
@@ -248,16 +250,16 @@ async function renderForm(key, editId) {
   const form = $("#ttForm"), pad = sigPad($("#ttSig"), await savedSig());
   const collect = () => {
     const { data, miss } = readFields(t, form);
-    const lyDo = $("#ttLyDo").value.trim(), sdt = $("#ttSdt").value.trim();
+    const lyDo = $("#ttLyDo") ? $("#ttLyDo").value.trim() : "", sdt = $("#ttSdt").value.trim(), emailLH = $("#ttEmail").value.trim();
     if (!sdt) miss.unshift("Số điện thoại liên hệ");
-    if (!lyDo) miss.push("Lý do");
+    if (!lyDo && lyMode === true) miss.push("Lý do");
     const links = $("#ttLinks").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
     const bad = links.find(l => !/^https?:\/\//i.test(l));
-    return { data, miss, lyDo, sdt, links, bad };
+    return { data, miss, lyDo, sdt, emailLH, links, bad };
   };
   const draft = (c, sig) => ({
-    ma: old ? old.ma : "(cấp khi gửi)", tt: t.key, ttTen: t.ten, form: { tieuDe: t.tieuDe, kinhGui: t.kinhGui, canCu: t.canCu, fields: t.fields || [] },
-    sv: { email: myEmail(), mssv: sv.mssv, hoTen: sv.hoTen, ngaySinh: sv.ngaySinh || "", lop: sv.lop, nganh: sv.nganh || "", khoa: sv.khoa || "", sdt: c.sdt },
+    ma: old ? old.ma : "(cấp khi gửi)", tt: t.key, ttTen: t.ten, form: { tieuDe: t.tieuDe, kinhGui: t.kinhGui, canCu: t.canCu, fields: t.fields || [], ...(t.mau ? { mau: t.mau } : {}) },
+    sv: { email: myEmail(), mssv: sv.mssv, hoTen: sv.hoTen, ngaySinh: sv.ngaySinh || "", lop: sv.lop, nganh: sv.nganh || "", khoa: sv.khoa || "", sdt: c.sdt, emailLH: c.emailLH },
     data: c.data, lyDo: c.lyDo, links: c.links, steps: (t.steps || []).map(r => typeof r === "string" ? { role: r, name: stepName(r) } : r),
     svSig: sig ? { img: sig, at: new Date().toISOString() } : null, history: [], status: "nhap", created: old ? old.created : new Date().toISOString()
   });
@@ -284,7 +286,7 @@ async function renderForm(key, editId) {
       let id;
       if (old) {
         id = old.id;
-        await updateDoc(doc(db, "pna_don", id), { data: d.data, lyDo: d.lyDo, links: d.links, "sv": { ...old.sv, sdt: c.sdt }, svSig: d.svSig, status: "cho-duyet", step: 0, stepRole: old.steps[0].role, history: [...(old.history || []), entry], updated: now, nTep: (old.nTep || 0) + tep.length, hash });
+        await updateDoc(doc(db, "pna_don", id), { data: d.data, lyDo: d.lyDo, links: d.links, "sv": { ...old.sv, sdt: c.sdt, emailLH: c.emailLH }, svSig: d.svSig, status: "cho-duyet", step: 0, stepRole: old.steps[0].role, history: [...(old.history || []), entry], updated: now, nTep: (old.nTep || 0) + tep.length, hash });
       } else {
         Object.assign(d, { status: "cho-duyet", step: 0, stepRole: d.steps[0].role, history: [entry], lop: sv.lop, cvht: sv.cvht || [], updated: now, nTep: tep.length, hash });
         id = (await addDoc(collection(db, "pna_don"), d)).id;
@@ -304,33 +306,73 @@ function cellVal(f, v) {
   if (f.type === "table") return Array.isArray(v) && v.length ? `<table class="a4-tbl"><thead><tr><th>TT</th>${f.cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${v.map((r, i) => `<tr><td>${i + 1}</td>${f.cols.map((c, j) => `<td>${esc(r[j] || "")}</td>`).join("")}</tr>`).join("")}</tbody></table>` : "<i>(không có)</i>";
   return esc(f.type === "date" ? fmtD(v) : v || "");
 }
+const DOTS = "……………………";
+/* Phần đầu đơn theo thể thức Học viện Hành chính và Quản trị công (sau hợp nhất) */
+const headHTML = made => `<div class="a4-hd"><div class="a4-hl">HỌC VIỆN CHÍNH TRỊ QUỐC GIA<br>HỒ CHÍ MINH<br><b>HỌC VIỆN HÀNH CHÍNH<br>VÀ QUẢN TRỊ CÔNG</b><br><b>*</b></div>
+  <div class="a4-hr"><b class="u">ĐẢNG CỘNG SẢN VIỆT NAM</b><i>Hà Nội, ngày ${made.getDate()} tháng ${made.getMonth() + 1} năm ${made.getFullYear()}</i></div></div>`;
 function sheetHTML(d) {
-  const fm = d.form || {}, sv = d.sv || {}, made = new Date(d.created || Date.now());
+  const fm = d.form || {}, sv = d.sv || {}, made = new Date(d.created || Date.now()), M = fm.mau, data = d.data || {};
   const sigBlock = (title, s, who, sub) => `<div class="a4-sig"><b>${esc(title)}</b><i>${sub ? esc(sub) : "(Ký và ghi rõ họ tên)"}</i>
     <div class="a4-sigimg">${s && s.img ? `<img src="${s.img}" alt="Chữ ký">` : ""}</div><b>${esc(who || "")}</b>
     ${s && s.at ? `<small>Ký điện tử lúc ${fmtDT(s.at)}${s.hash ? `<br>Mã xác thực: ${esc(s.hash)}` : ""}</small>` : ""}</div>`;
-  const steps = (d.steps || []).map((st, i) => {
+  const stepSig = (i, title, sub) => {
     const h = [...(d.history || [])].reverse().find(x => x.step === i && ["duyet", "tu-choi"].includes(x.act));
-    const title = (STEP_ROLES[st.role] || { sign: "Ý KIẾN CỦA " + st.name.toUpperCase() }).sign;
     const op = h ? `<p class="a4-op">${h.act === "duyet" ? "Đồng ý" : "Không đồng ý"}${h.note ? ": " + esc(h.note) : "."}</p>` : `<p class="a4-op muted">(Chưa xử lý)</p>`;
-    return `<div class="a4-step">${sigBlock(title, h ? { img: h.sig, at: h.at, hash: h.hash } : null, h ? h.name : "")}${op}</div>`;
-  }).join("");
-  return `<article class="a4">
-    <div class="a4-qh"><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><b class="u">Độc lập - Tự do - Hạnh phúc</b></div>
-    <h1>${esc(fm.tieuDe || d.ttTen || "ĐƠN ĐỀ NGHỊ")}</h1>
-    <p class="a4-kg"><b>Kính gửi:</b> ${esc(fm.kinhGui || "")}</p>
-    <p class="l">Tôi tên là: <b>${esc(sv.hoTen)}</b>&emsp;Ngày sinh: ${esc(fmtD(sv.ngaySinh))}</p>
-    <p class="l">Mã sinh viên: <b>${esc(sv.mssv)}</b>&emsp;Lớp: ${esc(sv.lop)}${sv.nganh ? "&emsp;Ngành: " + esc(sv.nganh) : ""}${sv.khoa ? "&emsp;Khóa: " + esc(sv.khoa) : ""}</p>
-    <p class="l">Số điện thoại: ${esc(sv.sdt || "")}${String(sv.email || "").endsWith("@" + P.ACCT_DOMAIN) ? "" : "&emsp;Email: " + esc(sv.email || "")}</p>
-    ${fm.canCu ? `<p>Căn cứ ${esc(fm.canCu)},</p>` : ""}
-    <p>Tôi làm đơn này kính đề nghị ${esc((fm.kinhGui || "").split(";")[0] || "Học viện")} xem xét, giải quyết nội dung sau:</p>
-    ${(fm.fields || []).map(f => f.type === "table" ? `<p>- ${esc(f.label)}:</p>${cellVal(f, (d.data || {})[f.k])}` : `<p>- ${esc(f.label)}: ${cellVal(f, (d.data || {})[f.k])}</p>`).join("")}
+    return `<div class="a4-step">${sigBlock(title, h ? { img: h.sig, at: h.at, hash: h.hash } : null, h ? h.name : "", sub)}${op}</div>`;
+  };
+  const fOf = k => (fm.fields || []).find(f => f.k === k);
+  const val = k => {
+    if (k === "KHOA") return KHOA_QL; if (k === "HV") return HV; if (k === "GD") return "Giám đốc " + HV;
+    if (k === "lyDo") return d.lyDo || "";
+    const f = fOf(k), v = data[k]; if (v == null || v === "") return "";
+    return f && f.type === "date" ? fmtD(v) : String(v);
+  };
+  const boxes = (k, block) => { const f = fOf(k) || { opts: [] }, v = data[k]; const items = (f.opts || []).map(o => `<span class="a4-box">${o === v ? "☒" : "☐"} ${esc(o)}</span>`); return block ? `<div class="a4-boxes">${items.join("")}</div>` : items.join(" "); };
+  const mcHTML = () => { const n = d.nTep || 0, L = d.links || []; const rows = [...L.map(l => esc(l)), ...(n ? [n + " tệp minh chứng đính kèm (lưu trên hệ thống)"] : [])]; return rows.length ? `<ol class="a4-mc">${rows.map(r => `<li>${r}</li>`).join("")}</ol>` : `<p class="l">1. ${DOTS}</p>`; };
+  const fill = str => esc(str).replace(/\{\^(\w+)\}/g, (m, k) => esc(val(k).toUpperCase()) || DOTS).replace(/\{\?(\w+)\}/g, (m, k) => boxes(k, false)).replace(/\{(\w+)\}/g, (m, k) => esc(val(k)) || DOTS);
+  const para = p => {
+    let m;
+    if ((m = /^\{#(\w+)\}$/.exec(p))) { const f = fOf(m[1]); return f ? cellVal(f, data[m[1]]) : ""; }
+    if ((m = /^\{\?(\w+)\}$/.exec(p))) return boxes(m[1], true);
+    if (p === "{minhChung}") return mcHTML();
+    if (p.startsWith("!!")) return `<p class="a4-sub">${fill(p.slice(2))}</p>`;
+    if (/\{lyDo\}/.test(p) && !d.lyDo && M && M.lyDo === "opt") return "";
+    return `<p>${fill(p)}</p>`;
+  };
+  const kg = String(fm.kinhGui || "").split(";").map(x => x.trim()).filter(Boolean).map(x => fill(x));
+  const kgHTML = kg.length > 1 ? `<div class="a4-kg2"><b>Kính gửi:</b><div>${kg.map((x, i) => `<p>- ${x}${i < kg.length - 1 ? ";" : "."}</p>`).join("")}</div></div>` : `<p class="a4-kg"><b>Kính gửi:</b> ${kg[0] || ""}</p>`;
+  const email = sv.emailLH || (String(sv.email || "").endsWith("@" + P.ACCT_DOMAIN) ? "" : sv.email || "");
+  const svInfo = `<p class="l">Họ và tên sinh viên: <b>${esc(sv.hoTen)}</b>&emsp;Mã số sinh viên: <b>${esc(sv.mssv)}</b></p>
+    <p class="l">Ngày sinh: ${esc(fmtD(sv.ngaySinh)) || DOTS}&emsp;Ngành: ${esc(sv.nganh || "") || DOTS}&emsp;Khoa: ${esc(KHOA_QL)}</p>
+    <p class="l">Lớp: ${esc(sv.lop)}&emsp;Khóa học: ${esc(sv.khoa || "") || DOTS}</p>
+    <p class="l">Điện thoại liên hệ: ${esc(sv.sdt || "") || DOTS}&emsp;Email: ${esc(email) || DOTS}</p>`;
+  let body, sigs;
+  if (M) {
+    body = (M.them || []).map(x => `<p class="l">${fill(x)}</p>`).join("") + (M.body || []).map(para).join("");
+    const steps = d.steps || [], used = new Set(), list = [];
+    (M.sigs || []).forEach(g => {
+      const t = fill(g.t).replace(/……………………/g, "");
+      if (g.role === "sv") list.push(sigBlock(t, d.svSig, sv.hoTen, g.sub || "(Ký và ghi rõ họ tên)"));
+      else { const i = g.role ? steps.findIndex(x => x.role === g.role) : -1;
+        if (i >= 0) { used.add(i); list.push(stepSig(i, t, g.sub)); } else list.push(`<div class="a4-sig a4-blank"><b>${t}</b><i>${esc(g.sub || "(Ký và ghi rõ họ tên)")}</i><div class="a4-sigimg"></div></div>`); }
+    });
+    const extra = []; steps.forEach((st, i) => { if (!used.has(i)) extra.push(stepSig(i, (STEP_ROLES[st.role] || { sign: "Ý KIẾN CỦA " + st.name.toUpperCase() }).sign)); });
+    if ((M.sigs || []).length === 1) list.unshift(...extra); else list.push(...extra);   // đơn chỉ có chữ ký người làm đơn: người làm đơn ở cuối (bên phải)
+    sigs = `<div class="a4-sigs${M.cols === 3 || (list.length === 3 && [1, 3].includes((M.sigs || []).length)) ? " c3" : ""}">${list.join("")}</div>`;
+    if (M.kiemTra) sigs += `<div class="a4-kt"><p class="a4-sub">Phần dành cho bộ phận kiểm tra, giải quyết</p><p>Họ tên người nhận đơn: ${DOTS}${DOTS}</p><p>Ngày nhận: ……/……/………… Ký tên: ${DOTS}</p><p>Họ tên người kiểm tra: ${DOTS}${DOTS}</p><p>Ngày trả kết quả: ……/……/…………</p><p>Kết quả: Đủ điều kiện ☐; Không đủ điều kiện ☐; Ký tên: ${DOTS}</p><p>Ý kiến khác: ${DOTS}${DOTS}${DOTS}</p><p>Ý kiến lãnh đạo Ban Quản lý đào tạo: ${DOTS}${DOTS} Ký tên: ${DOTS} ngày ……/……/…………</p></div>`;
+  } else {
+    body = `${fm.canCu ? `<p>Căn cứ ${esc(fm.canCu)},</p>` : ""}
+    <p>Em làm đơn này kính đề nghị ${esc((fm.kinhGui || "").split(";")[0] || "Học viện")} xem xét, giải quyết nội dung sau:</p>
+    ${(fm.fields || []).map(f => f.type === "table" ? `<p>- ${esc(f.label)}:</p>${cellVal(f, data[f.k])}` : `<p>- ${esc(f.label)}: ${cellVal(f, data[f.k])}</p>`).join("")}
     <p>- Lý do: ${esc(d.lyDo || "")}</p>
-    ${(d.nTep || (d.links || []).length) ? `<p>- Hồ sơ kèm theo: ${d.nTep ? d.nTep + " tệp minh chứng" : ""}${d.nTep && (d.links || []).length ? "; " : ""}${(d.links || []).length ? (d.links || []).length + " đường link" : ""} (lưu trên hệ thống).</p>` : ""}
-    <p>Tôi cam đoan những thông tin trên là đúng sự thật và xin chịu trách nhiệm trước Học viện. Kính mong được xem xét, giải quyết.</p>
-    <p class="a4-date"><i>Hà Nội, ngày ${made.getDate()} tháng ${made.getMonth() + 1} năm ${made.getFullYear()}</i></p>
-    <div class="a4-sigs">${sigBlock("NGƯỜI LÀM ĐƠN", d.svSig, sv.hoTen)}${steps}</div>
-    <footer class="a4-ft">Mã hồ sơ: <b>${esc(d.ma || "")}</b>${d.hash ? ` · Mã băm nội dung: ${esc(d.hash)}` : ""} · Lập và ký điện tử trên Hệ thống cố vấn học tập. Chữ ký điện tử nội bộ gắn với tài khoản đăng nhập, thời điểm ký và mã băm nội dung; không thay thế chữ ký số khi văn bản bắt buộc ký số.</footer>
+    ${(d.nTep || (d.links || []).length) ? `<p>- Hồ sơ kèm theo:</p>${mcHTML()}` : ""}
+    <p>Em cam đoan những thông tin trên là đúng sự thật và xin chịu trách nhiệm trước Học viện. Kính mong được xem xét, giải quyết.</p>`;
+    sigs = `<div class="a4-sigs">${(d.steps || []).map((st, i) => stepSig(i, (STEP_ROLES[st.role] || { sign: "Ý KIẾN CỦA " + st.name.toUpperCase() }).sign)).join("")}${sigBlock("NGƯỜI LÀM ĐƠN", d.svSig, sv.hoTen)}</div>`;
+  }
+  return `<article class="a4">${headHTML(made)}
+    <h1>${fill(fm.tieuDe || d.ttTen || "ĐƠN ĐỀ NGHỊ")}</h1>${M && M.tieuDe2 ? `<p class="a4-t2">${fill(M.tieuDe2)}</p>` : ""}
+    ${kgHTML}${svInfo}${body}${sigs}
+    <footer class="a4-ft">Mã hồ sơ: <b>${esc(d.ma || "")}</b>${d.hash ? ` · Mã băm nội dung: ${esc(d.hash)}` : ""}${M && M.pl ? ` · Mẫu: ${esc(M.pl)} ${esc(MAU_QC)}` : ""} · Lập và ký điện tử trên Hệ thống cố vấn học tập. Chữ ký điện tử nội bộ gắn với tài khoản đăng nhập, thời điểm ký và mã băm nội dung; không thay thế chữ ký số khi văn bản bắt buộc ký số.</footer>
   </article>`;
 }
 function showSheetDialog(d) {
@@ -596,8 +638,8 @@ const fieldsToText = fs => (fs || []).map(f => [f.k, f.label + (f.req ? " *" : "
 function textToFields(txt) {
   return txt.split(/\n+/).map(l => l.trim()).filter(Boolean).map(l => {
     const [k, lab = "", type = "text", list = "", hint = ""] = l.split("|").map(s => s.trim());
-    const req = /\*$/.test(lab), f = { k: k.replace(/[^\w-]/g, "") || "f" + Math.random().toString(36).slice(2, 6), label: lab.replace(/\s*\*$/, ""), type: ["text", "textarea", "date", "number", "select", "table"].includes(type) ? type : "text", req };
-    if (f.type === "select") f.opts = list.split(";").map(s => s.trim()).filter(Boolean);
+    const req = /\*$/.test(lab), f = { k: k.replace(/[^\w-]/g, "") || "f" + Math.random().toString(36).slice(2, 6), label: lab.replace(/\s*\*$/, ""), type: ["text", "textarea", "date", "number", "select", "check", "table"].includes(type) ? type : "text", req };
+    if (f.type === "select" || f.type === "check") f.opts = list.split(";").map(s => s.trim()).filter(Boolean);
     if (f.type === "table") f.cols = list.split(";").map(s => s.trim()).filter(Boolean);
     if (hint) f.hint = hint;
     return f;
@@ -630,7 +672,7 @@ function renderConfig() {
   const L = list;
   $("#cfgAdd").onclick = () => { L.push({ key: "tt-" + Date.now().toString(36), nhom: "Khác", ten: "", tieuDe: "ĐƠN ĐỀ NGHỊ", kinhGui: "Cố vấn học tập; Lãnh đạo Khoa", steps: ["cvht"], fields: [], active: true }); $("#cfgList").insertAdjacentHTML("beforeend", card(L[L.length - 1], L.length - 1)); $("#cfgList").lastElementChild.open = true; };
   $("#cfgList").addEventListener("click", e => { const b = e.target.closest("[data-cfgdel]"); if (!b) return; const det = b.closest("details"); L[+det.dataset.i]._del = true; det.remove(); });
-  $("#cfgReset").onclick = async () => { if (!await P.ask("Thay toàn bộ cấu hình thủ tục bằng bộ mặc định (theo Quy chế đào tạo 2026)? Các thay đổi đã lưu sẽ mất.")) return; CFG = THU_TUC.map(t => ({ ...t, active: true })); renderConfig(); };
+  $("#cfgReset").onclick = async () => { if (!await P.ask("Thay toàn bộ cấu hình thủ tục bằng bộ mặc định (mẫu đơn theo Phụ lục Quy chế đào tạo, điều kiện theo Quy chế đào tạo 2026)? Các thay đổi đã lưu sẽ mất.")) return; CFG = THU_TUC.map(t => ({ ...t, active: true })); renderConfig(); };
   $("#cfgSave").onclick = async () => {
     const err = $("#cfgErr"); err.textContent = "";
     const out = [];
@@ -645,7 +687,7 @@ function renderConfig() {
     if (bad) return err.textContent = "Mỗi thủ tục cần có tên và ít nhất một bước duyệt" + (bad.ten ? " (" + bad.ten + ")" : "") + ".";
     const em = id => $(id).value.split(/[,;\s]+/).map(s => s.trim().toLowerCase()).filter(s => s.includes("@"));
     try {
-      await setDoc(doc(db, "pna_tt_settings", "thutuc"), { list: out, updated: new Date().toISOString(), by: myEmail() });
+      await setDoc(doc(db, "pna_tt_settings", "thutuc"), { list: out, ver: TT_VER, updated: new Date().toISOString(), by: myEmail() });
       await setDoc(doc(db, "pna_tt_settings", "nguoiduyet"), { khoa: em("#ndKhoa"), qldt: em("#ndQldt"), updated: new Date().toISOString() });
       P.logAct("TT_CONFIG", out.length + " thủ tục"); P.toast("Đã lưu cấu hình."); await load(true); renderConfig();
     } catch (e) { err.textContent = "Chưa lưu được: " + e.message; }

@@ -751,7 +751,7 @@ body.ai-open .ai-fab{display:none}
 .a4-tbl{width:100%;border-collapse:collapse;margin:4px 0 6px;font-size:12pt}
 .a4-tbl th,.a4-tbl td{border:1px solid #000;padding:3px 6px;text-align:left;vertical-align:top}
 .a4-tbl th{text-align:center}
-.a4-sigs{display:grid;grid-template-columns:repeat(2,1fr);gap:16px 20px;margin-top:10px;direction:rtl}
+.a4-sigs{display:grid;grid-template-columns:repeat(2,1fr);gap:16px 20px;margin-top:14px}
 .a4-sigs>*{direction:ltr}
 .a4-sig{display:flex;flex-direction:column;align-items:center;text-align:center;font-size:12.5pt}
 .a4-sig i{font-size:11.5pt}
@@ -982,3 +982,22 @@ body.pg-sub .box{max-width:none}
 .hs-rlk{display:inline-block;min-width:22px;font-weight:700;color:#1e3a8a}
 .hs-rl .hs-gc{width:100%;min-width:180px}
 .pw-st small{display:inline-block;margin-top:2px}
+
+/* Thể thức đơn theo Học viện Hành chính và Quản trị công (28/11) */
+.a4-hd{display:grid;grid-template-columns:46% 54%;align-items:start;font-size:12.5pt;line-height:1.3}
+.a4-hl{text-align:center}
+.a4-hl b{font-size:13pt}
+.a4-hr{text-align:center;display:flex;flex-direction:column;align-items:center;gap:30px}
+.a4-hr .u{font-size:14pt;border-bottom:1.5px solid #000;padding-bottom:1px}
+.a4-hr i{font-size:13pt}
+.a4 .a4-t2{text-align:center;font-weight:700;margin:-8px 0 12px}
+.a4-kg2{display:flex;gap:8px;margin:0 0 10px 18%}
+.a4-kg2 p{margin:0!important;text-align:left}
+.a4-boxes{display:flex;flex-direction:column;gap:2px;margin:2px 0 4px 18px}
+.a4-box{white-space:normal}
+.a4 .a4-sub{text-align:center;font-weight:700;margin-top:10px}
+.a4-sigs.c3{grid-template-columns:repeat(3,1fr)}
+.a4-blank .a4-sigimg{height:72px}
+.a4-mc{margin:2px 0 4px 18px;padding-left:18px}
+.a4-kt{margin-top:18px;font-size:12pt}
+.a4-kt p{margin:2px 0}
