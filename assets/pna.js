@@ -534,6 +534,11 @@ function route() {
   if (h.startsWith("xem/")) { renderHome(); $("#layout").classList.remove("no-tools"); const id = h.slice(4); if (items[id] && currentOpenDocId !== id) openDoc(id); else if (!items[id] && authReady) { toast("Không tìm thấy tài liệu hoặc bạn chưa có quyền xem. Hãy đăng nhập.", "err"); } return; }
   if (h === "tai-khoan") return renderAccounts();
   if (h === "thu-muc" || h === "thu-muc/them-bst") return renderFolders();
+  /* Hồ sơ sinh viên theo vòng đời (assets/hoso.js) */
+  if (h === "sv" || h.startsWith("sv/") || h.startsWith("sv-")) {
+    if (window.PNA_SV) return window.PNA_SV.route(h);
+    $("#main").innerHTML = '<p class="empty">Đang tải Hồ sơ sinh viên…</p>'; return;
+  }
   /* Cổng Thủ tục sinh viên (assets/thutuc.js) */
   if (h === "tt" || h.startsWith("tt/") || h.startsWith("tt-")) {
     if (window.PNA_TT) return window.PNA_TT.route(h);

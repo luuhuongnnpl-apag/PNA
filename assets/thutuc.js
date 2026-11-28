@@ -8,7 +8,7 @@
    không thay thế chữ ký số do tổ chức cung cấp dịch vụ chứng thực cấp. Có ô gắn bản PDF đã ký số.
    ===================================================================== */
 import { doc, getDoc, setDoc, updateDoc, addDoc, deleteDoc, collection, getDocs, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
-import { THU_TUC, STEP_ROLES } from "./thutuc-data.js?v=20261128t";
+import { THU_TUC, STEP_ROLES } from "./thutuc-data.js?v=20261128v";
 
 const P = window.PNA;
 const db = P.db, esc = P.esc;
@@ -493,6 +493,8 @@ async function renderLop(sel) {
     </tbody></table></div>`);
   bindLop(lops);
   $("#lopSel").onchange = e => go("tt-lop/" + e.target.value);
+  /* Danh sách chuyển sang từ trang lớp của Hồ sơ sinh viên */
+  try { const pf = JSON.parse(sessionStorage.getItem("pna_sv_prefill") || "null"); if (pf && pf.lop === cur.id) { $("#svPaste").value = pf.text; sessionStorage.removeItem("pna_sv_prefill"); $("#svPaste").scrollIntoView({ block: "center" }); } } catch (e) {}
   document.querySelectorAll("[data-svdel]").forEach(b => b.onclick = async () => {
     const em = b.dataset.svdel;
     if (!await P.ask("Xóa hồ sơ sinh viên " + P.showName(em) + "? Sinh viên sẽ không lập được đơn mới; các đơn cũ vẫn lưu.")) return;
@@ -515,6 +517,7 @@ async function renderLop(sel) {
         const at = new Date().toISOString();
         await setDoc(doc(db, "pna_accounts", email), { role: "sinh-vien", name: hoTen, username: gmail ? "" : mssv, cats: ["*"], updated: at, by: myEmail() }, { merge: true });
         await setDoc(doc(db, "pna_sv", email), { email, mssv, hoTen, ngaySinh, sdt, lop: cur.id, nganh: cur.nganh || "", khoa: cur.khoa || "", cvht: cur.cvht || [], updated: at, by: myEmail() }, { merge: true });
+        try { await setDoc(doc(db, "pna_hoso", mssv), { email, updated: at, by: myEmail() }, { merge: true }); } catch (e) {}   // gắn tài khoản vào hồ sơ vòng đời (nếu đã có)
         res.push([mssv, hoTen, gmail ? gmail + " (Google)" : mssv, note || (pw ? pw : ""), "✓"]);
       } catch (e) { res.push([mssv, hoTen, "", "", "Lỗi: " + (e.code || e.message)]); }
     }
@@ -539,6 +542,9 @@ function bindLop(lops) {
         const snap = await getDocs(query(collection(db, "pna_sv"), where("lop", "==", id))); const ops = [];
         snap.forEach(d => ops.push(d.ref));
         for (let i = 0; i < ops.length; i += 400) { const bt = writeBatch(db); ops.slice(i, i + 400).forEach(r => bt.update(r, { cvht })); await bt.commit(); }
+        const s2 = await getDocs(query(collection(db, "pna_hoso"), where("lop", "==", id))), r2 = [];
+        s2.forEach(d => r2.push(d.ref));
+        for (let i = 0; i < r2.length; i += 400) { const bt = writeBatch(db); r2.slice(i, i + 400).forEach(r => bt.update(r, { cvht })); await bt.commit(); }
       }
       P.logAct("LOP_SAVE", id); P.toast("Đã lưu lớp " + id + "."); await load(true); renderLop(id);
     } catch (e) { err.textContent = "Chưa lưu được: " + e.message; }

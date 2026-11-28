@@ -164,6 +164,24 @@ service cloud.firestore {
       }
     }
 
+    // ===== Hồ sơ sinh viên theo vòng đời (28/11/2026) =====
+    // pna_hoso/{mã SV}: quản trị, Lãnh đạo Khoa đọc tất cả; cố vấn học tập đọc, cập nhật hồ sơ lớp mình;
+    // sinh viên đọc hồ sơ của chính mình (theo mã SV trong pna_sv/{email}). Họ tên, ngày sinh, lớp, cố vấn chỉ quản trị sửa.
+    function ownHoso(id) { return isSv() && get(svPath()).data.mssv == id; }
+    match /pna_hoso/{id} {
+      allow get: if signedIn() && (isAdmin() || inNd('khoa') || me() in resource.data.get('cvht', []) || ownHoso(id));
+      allow list: if signedIn() && (isAdmin() || inNd('khoa') || me() in resource.data.get('cvht', []));
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (me() in resource.data.get('cvht', [])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['trangThai', 'sdt', 'emailLienHe', 'queQuan', 'chucVu', 'chucVuNam', 'suKien', 'drl', 'email', 'updated', 'by']));
+      // Ghi chú nội bộ của cố vấn học tập: sinh viên không xem được
+      match /noibo/{n} {
+        allow read, write: if signedIn() && (isAdmin()
+          || me() in get(/databases/$(database)/documents/pna_hoso/$(id)).data.get('cvht', []));
+      }
+    }
+    match /pna_ctdt/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
+
     // Nhật ký thao tác
     match /pna_activity/{id} {
       allow create: if signedIn();
