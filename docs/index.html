@@ -4,10 +4,30 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
-  <title>Hệ thống cố vấn học tập | PNA</title>
-  <link rel="stylesheet" href="assets/portal.css?v=018">
-  <script type="module" src="assets/portal.js?v=017"></script>
+  <title>Trung tâm Cố vấn học tập | PNA</title>
+  <link rel="stylesheet" href="assets/portal.css?v=019">
+  <script type="module" src="assets/portal.js?v=019"></script>
   <script type="module" src="assets/auth.js?v=017"></script>
+  <style>
+    :root{--navy:#22476d;--line:#d6dee9;background:#f2f4f7;font-size:14px}
+    .frame{width:min(100% - 2.5rem,1600px)}
+    .top{border-bottom:0}.top-inner{min-height:44px}
+    .hero{padding:1.15rem 0;background:linear-gradient(110deg,#e4effa,#f0f6fc);text-align:center}
+    .hero h1{font-family:Georgia,'Times New Roman',serif;font-size:clamp(1.5rem,3vw,2.2rem);text-transform:uppercase}
+    .hero p{font-size:.9rem;letter-spacing:.04em}
+    .layout{grid-template-columns:minmax(190px,21%) minmax(0,1fr) minmax(180px,22%);gap:1.25rem}
+    .nav-group,.card,.announcement,.archive-link{border-radius:4px;box-shadow:0 2px 5px #22476d0d}
+    .nav-group h2{font-size:.95rem}.nav-group [aria-current="page"]{background:var(--navy);color:white}
+    .card{padding:1rem}.card h2{font-size:1.15rem;text-transform:uppercase;border-left:3px solid #285b47;padding-left:.65rem}
+    .announcement-grid,.archive-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,165px),1fr))}
+    .announcement h3{font-size:1rem}.student-services{min-width:0}
+    .student-services h2{font-size:1.1rem;margin:0 0 1rem;padding-bottom:.55rem;border-bottom:3px solid var(--navy)}
+    .service-list{display:grid;gap:.65rem;background:white;border:1px solid var(--line);border-radius:4px;padding:.7rem}
+    .service-list a{display:flex;align-items:center;gap:.65rem;padding:.9rem .65rem;background:#edf3fa;border:1px solid #cbdbea;border-radius:4px;text-decoration:none;font-weight:600;overflow-wrap:anywhere}
+    .service-list a:hover{background:#dce9f6}.service-list a span{font-size:1.6rem;flex:none}
+    @media(max-width:1000px){.layout{grid-template-columns:minmax(170px,24%) minmax(0,1fr)}.student-services{grid-column:2;grid-row:1}.workspace{grid-column:2;grid-row:2}#navigation{grid-row:1 / span 2}.service-list{grid-template-columns:repeat(3,minmax(0,1fr))}}
+    @media(max-width:740px){.frame{width:calc(100% - 1.5rem)}.layout{grid-template-columns:minmax(0,1fr);gap:1rem}.student-services{grid-column:1;grid-row:1}.workspace{grid-column:1;grid-row:3}#navigation{grid-row:2;grid-template-columns:1fr}.service-list{grid-template-columns:1fr}.hero{padding:1rem 0}}
+  </style>
 </head>
 <body>
   <header class="top">
@@ -24,7 +44,7 @@
   </header>
   <div class="hero">
     <div class="frame">
-      <h1>Hệ thống cố vấn học tập</h1>
+      <h1>Trung tâm Cố vấn học tập</h1>
       <p>Cung cấp hệ thống tài liệu và tư vấn chuyên môn, rèn luyện</p>
     </div>
   </div>
@@ -70,7 +90,15 @@
       </section>
       <p id="feedback" class="feedback" role="status" hidden></p>
     </div>
+    <aside class="student-services" aria-labelledby="servicesTitle">
+      <h2 id="servicesTitle">DỊCH VỤ SINH VIÊN</h2>
+      <div class="service-list">
+        <a href="#service/retake"><span aria-hidden="true">↻</span>Đăng ký học lại, cải thiện</a>
+        <a href="#service/withdraw"><span aria-hidden="true">−</span>Đăng ký rút học phần</a>
+        <a href="#service/signature"><span aria-hidden="true">✎</span>Xác nhận chữ kí</a>
+      </div>
+    </aside>
   </main>
-  <footer>Hệ thống cố vấn học tập · Công cụ hỗ trợ học tập và rèn luyện</footer>
+  <footer>Trung tâm Cố vấn học tập · Công cụ hỗ trợ học tập và rèn luyện</footer>
 </body>
 </html>
