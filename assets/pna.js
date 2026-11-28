@@ -526,6 +526,8 @@ function route() {
   const h = decodeURIComponent(location.hash.slice(1));
   const home = !h;
   $("#layout").classList.toggle("no-tools", !home);
+  /* Trang cấp 2 trở đi: mở rộng toàn bề ngang, chỉ giữ thanh Quay lại / Trang chủ (ẩn cột trái, cột phải, ô tìm kiếm) */
+  document.body.classList.toggle("pg-sub", !home && !h.startsWith("xem/"));
   renderNav(); renderAuth();
   if (home) return renderHome();
   if (h.startsWith("dm/")) return renderCat(h.slice(3));
@@ -3030,14 +3032,17 @@ async function renderAccounts() {
       $("#acBody").innerHTML = AC.length ? AC.map(x => {
         const st = x.disabled ? '<span class="badge bad">Đã khóa</span>' : x.han && todayISO() > x.han ? '<span class="badge bad">Hết hạn</span>' : '<span class="badge ok">Hoạt động</span>';
         return `<tr><td><b>${esc(showName(x.id))}</b><br><span class="muted">${x.login === "google" ? "Đăng nhập Google" : "Tên đăng nhập + mật khẩu"}</span></td><td>${esc(x.name || "")}<br><span class="muted">${esc(x.unit || "")}</span></td><td>${esc((ROLES[x.role] || {}).name || x.role)}</td><td>${esc(x.role === "quan-tri" ? "Tất cả" : catsText(x.cats))}</td><td>${x.han ? fmtDate(x.han) : "—"}</td><td>${st}</td>
-          <td style="white-space:nowrap"><button type="button" class="btn sm" data-acedit="${esc(x.id)}">Sửa</button> <button type="button" class="btn sm" data-aclock="${esc(x.id)}">${x.disabled ? "Mở khóa" : "Khóa"}</button> <button type="button" class="btn sm" data-acdel="${esc(x.id)}">Xóa</button></td></tr>`;
+          <td style="white-space:nowrap"><button type="button" class="btn sm" data-acedit="${esc(x.id)}">Sửa</button> ${x.id.endsWith("@" + ACCT_DOMAIN) ? `<button type="button" class="btn sm" data-acpw="${esc(x.id)}">Đặt lại mật khẩu</button> ` : ""}<button type="button" class="btn sm" data-aclock="${esc(x.id)}">${x.disabled ? "Mở khóa" : "Khóa"}</button> <button type="button" class="btn sm" data-acdel="${esc(x.id)}">Xóa</button></td></tr>`;
       }).join("") : '<tr><td colspan="7" class="muted">Chưa có tài khoản nào.</td></tr>';
       $("#acBody").querySelectorAll("[data-acedit]").forEach(b => b.onclick = () => {
         const x = AC.find(y => y.id === b.dataset.acedit); AC_EDIT = x.id;
-        $("#acUser").value = showName(x.id); $("#acUser").readOnly = true; $("#acPass").value = ""; $("#acPass").placeholder = "Không đổi mật khẩu khi sửa";
+        $("#acUser").value = showName(x.id); $("#acUser").readOnly = true; $("#acPass").value = ""; $("#acPass").placeholder = x.id.endsWith("@" + ACCT_DOMAIN) ? "Để trống nếu không đổi; nhập mật khẩu mới để đặt lại" : "Tài khoản Google — không có mật khẩu";
         $("#acName").value = x.name || ""; $("#acUnit").value = x.unit || ""; $("#acRole").value = x.role || "xem"; $("#acHan").value = x.han || ""; acCats.set(x.cats);
         $("#acGo").textContent = "Lưu thay đổi"; $("#acCancel").hidden = false; showRole(); $("#acForm").scrollIntoView({ behavior: "smooth" });
       });
+      $("#acBody").querySelectorAll("[data-acpw]").forEach(b => b.onclick = () => pwResetDialog(b.dataset.acpw, (AC.find(y => y.id === b.dataset.acpw) || {}).name || "", "", () => acList()));
+      pwResetStatus().then(rs => { const last = {}; rs.forEach(r => { if (!last[r.email]) last[r.email] = r; });
+        $("#acBody").querySelectorAll("[data-acpw]").forEach(b => { const r = last[b.dataset.acpw]; if (r) b.insertAdjacentHTML("afterend", `<br><small class="${r.tt === "loi" ? "err" : "muted"}">${pwStText(r)}</small>`); }); });
       $("#acBody").querySelectorAll("[data-aclock]").forEach(b => b.onclick = async () => {
         const x = AC.find(y => y.id === b.dataset.aclock);
         try { await setDoc(doc(db, "pna_accounts", x.id), { disabled: !x.disabled, updated: new Date().toISOString() }, { merge: true }); await logAct(x.disabled ? "ACCT_UNLOCK" : "ACCT_LOCK", x.id); acList(); }
@@ -3079,6 +3084,7 @@ async function renderAccounts() {
       }
       const data = { email, username: showName(email), name, unit, role, cats, han: han || "", hanTs: han ? Timestamp.fromDate(new Date(han + "T23:59:59+07:00")) : null, login: pw || (AC_EDIT && (AC.find(x => x.id === AC_EDIT) || {}).login === "matkhau") ? "matkhau" : "google", ...(AC_EDIT ? { updated: new Date().toISOString() } : { created: new Date().toISOString(), by: user && user.email || "", disabled: false }) };
       await setDoc(doc(db, "pna_accounts", email), data, { merge: !!AC_EDIT });
+      if (AC_EDIT && pw) { await requestPwReset(email, pw, "Quản trị đặt lại khi sửa tài khoản"); notes.push("Đã gửi yêu cầu đặt lại mật khẩu; hệ thống áp dụng trong khoảng 5–15 phút (xem trạng thái ở cột Tài khoản)."); }
       if (!AC_EDIT && $("#acDrive").checked && !$("#acDriveWrap").hidden && settings && settings.rootId) {
         try {
           await drive(`https://www.googleapis.com/drive/v3/files/${settings.rootId}/permissions?sendNotificationEmail=false&supportsAllDrives=true`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: "writer", type: "user", emailAddress: email }) });
@@ -4230,9 +4236,42 @@ async function migrateAccess() {
     console.info("Đã gán mức truy cập cho " + miss.length + " tài liệu.");
   } catch (e) { console.warn("gán mức truy cập", e.message); }
 }
+/* Đặt lại mật khẩu cho tài khoản tên đăng nhập (sinh viên quên mật khẩu…).
+   Trình duyệt không đổi được mật khẩu của người khác, nên ghi yêu cầu vào pna_yeucau_tk;
+   GitHub Actions "Đồng bộ Firebase" (5 phút/lần) dùng quyền quản trị áp dụng rồi xóa mật khẩu khỏi yêu cầu. */
+async function requestPwReset(email, pw, ghiChu) {
+  email = String(email || "").toLowerCase();
+  if (!email.endsWith("@" + ACCT_DOMAIN)) throw new Error("Tài khoản đăng nhập bằng Google không có mật khẩu trong hệ thống; người dùng đổi mật khẩu tại Google.");
+  if (String(pw || "").length < 6) throw new Error("Mật khẩu mới cần ít nhất 6 ký tự.");
+  const me = (user && user.email || "").toLowerCase();
+  await addDoc(collection(db, "pna_yeucau_tk"), { viec: "dat-mat-khau", email, matKhau: String(pw), tt: "cho", by: me, at: new Date().toISOString(), ghiChu: ghiChu || "" });
+  logAct("PW_RESET_REQ", showName(email));
+}
+const pwStText = r => r.tt === "xong" ? "✓ Đã đặt lại mật khẩu " + fmtDate(String(r.xong || r.at).slice(0, 10)) : r.tt === "loi" ? "Lỗi đặt lại: " + esc(r.ketQua || "") : "⏳ Đang chờ áp dụng mật khẩu mới (gửi " + fmtDate(String(r.at).slice(0, 10)) + ")";
+function pwResetDialog(email, name, defPw, done) {
+  const dl = document.createElement("dialog"); dl.className = "dlg";
+  dl.innerHTML = `<form method="dialog" class="dlg-in"><h3>ĐẶT LẠI MẬT KHẨU</h3>
+    <p>Tài khoản <b>${esc(showName(email))}</b>${name ? " — " + esc(name) : ""}</p>
+    <label class="fld"><span>Mật khẩu mới (ít nhất 6 ký tự)</span><input id="rpPw" type="text" autocomplete="off" value="${esc(defPw || "")}"></label>
+    <p class="muted">${defPw ? "Mặc định là ngày sinh dạng ddmmyyyy. " : ""}Mật khẩu được áp dụng trong khoảng 5–15 phút. Báo người dùng đăng nhập bằng mật khẩu này rồi tự đổi (Công cụ → Đổi mật khẩu).</p>
+    <p class="err" id="rpErr"></p><div class="dlg-act"><button type="button" class="btn" value="x" data-x>Hủy</button><button type="submit" class="btn primary" id="rpGo">Gửi yêu cầu</button></div></form>`;
+  document.body.appendChild(dl); dl.showModal();
+  dl.querySelector("[data-x]").onclick = () => dl.close();
+  dl.addEventListener("close", () => dl.remove());
+  dl.querySelector("form").onsubmit = async e => {
+    e.preventDefault(); const b = dl.querySelector("#rpGo"); b.disabled = true;
+    try { await requestPwReset(email, dl.querySelector("#rpPw").value.trim()); toast("Đã gửi yêu cầu đặt lại mật khẩu cho " + showName(email) + ".", "ok"); dl.close(); done && done(); }
+    catch (x) { dl.querySelector("#rpErr").textContent = x.message; b.disabled = false; }
+  };
+}
+async function pwResetStatus(email) {
+  const me = (user && user.email || "").toLowerCase(); const out = [];
+  try { (await getDocs(query(collection(db, "pna_yeucau_tk"), where("by", "==", me)))).forEach(d => { const x = d.data(); if (!email || x.email === email) out.push({ id: d.id, ...x }); }); } catch (e) {}
+  return out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+}
 /* Cầu nối cho các phân hệ (Thủ tục sinh viên…) */
 window.PNA = {
-  app, db, auth, esc, toast, ask, go, logAct, toEmail, showName, createAuthUser, ACCT_DOMAIN,
+  app, db, auth, esc, toast, ask, go, logAct, toEmail, showName, createAuthUser, ACCT_DOMAIN, requestPwReset, pwResetStatus, pwResetDialog, pwStText,
   get user() { return user; }, get isAdmin() { return isAdmin; }, get acct() { return acct; }, get authReady() { return authReady; },
   route: () => route()
 };

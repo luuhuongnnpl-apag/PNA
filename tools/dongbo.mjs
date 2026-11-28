@@ -139,6 +139,39 @@ for (const f of files) {
 }
 if (!files.length) console.log("Không có gói dữ liệu mới.");
 
+/* ---------- 4. Yêu cầu đặt lại mật khẩu (pna_yeucau_tk) ----------
+   Người gửi phải là quản trị viên hoặc cố vấn học tập của sinh viên đó; chỉ áp dụng cho tài khoản tên đăng nhập (@taikhoan.pna)
+   không phải quản trị viên. Áp dụng xong xóa trường matKhau. Nhật ký không ghi tên tài khoản. */
+const SUPER = ["luuhuong.dhnv@gmail.com", "luuhuong.nnpl@gmail.com"];
+try {
+  const snap = await db.collection("pna_yeucau_tk").where("tt", "==", "cho").get(); const reqs = [];
+  snap.forEach(d => reqs.push({ ref: d.ref, ...d.data() }));
+  if (reqs.length) {
+    const authAdm = process.env.FAKE_DB ? (await import(process.env.FAKE_DB)).fakeAuth() : (await import("firebase-admin/auth")).getAuth();
+    const FV = process.env.FAKE_DB ? { delete: () => null } : (await import("firebase-admin/firestore")).FieldValue;
+    let ok = 0, bad = 0;
+    for (const r of reqs) {
+      let kq = "", tt = "loi";
+      try {
+        const em = String(r.email || "").toLowerCase(), by = String(r.by || "").toLowerCase();
+        if (!em.endsWith("@taikhoan.pna")) throw new Error("chỉ đặt lại được tài khoản tên đăng nhập");
+        if (String(r.matKhau || "").length < 6) throw new Error("mật khẩu quá ngắn");
+        const accBy = (await db.doc("pna_accounts/" + by).get()).data() || {}, accEm = (await db.doc("pna_accounts/" + em).get()).data() || {};
+        const admin = SUPER.includes(by) || (accBy.role === "quan-tri" && !accBy.disabled);
+        const sv = (await db.doc("pna_sv/" + em).get()).data();
+        const cvht = !accBy.disabled && accBy.role === "cvht" && sv && (sv.cvht || []).includes(by) && (accEm.role || "sinh-vien") === "sinh-vien";
+        if (!admin && !cvht) throw new Error("người gửi không có quyền với tài khoản này");
+        if (accEm.role === "quan-tri" && !SUPER.includes(by)) throw new Error("không đặt lại mật khẩu tài khoản quản trị");
+        try { const u = await authAdm.getUserByEmail(em); await authAdm.updateUser(u.uid, { password: String(r.matKhau) }); kq = "Đã đặt mật khẩu mới"; }
+        catch (e) { if (String(e.code || e.message).includes("user-not-found")) { await authAdm.createUser({ email: em, password: String(r.matKhau) }); kq = "Tài khoản chưa có trong hệ thống đăng nhập — đã tạo mới với mật khẩu này"; } else throw e; }
+        tt = "xong"; ok++;
+      } catch (e) { kq = e.message || String(e); bad++; }
+      await r.ref.set({ tt, ketQua: kq, xong: now(), matKhau: FV.delete() }, { merge: true });
+    }
+    note(`Đặt lại mật khẩu: ${ok} tài khoản thành công${bad ? `, ${bad} yêu cầu bị từ chối/lỗi` : ""}.`);
+  }
+} catch (e) { note("LỖI xử lý yêu cầu đặt lại mật khẩu: " + (e.message || e)); process.exitCode = 1; }
+
 if (log.length) {
   const head = "# Nhật ký đồng bộ Firebase (tự động)\n\n";
   const old = fs.existsSync(LOG) ? fs.readFileSync(LOG, "utf8").replace(head, "") : "";

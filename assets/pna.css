@@ -961,3 +961,24 @@ body.hs-full .content>.sec-title,body.hs-full #searchForm{display:none}
 .hs-ct .hs-in{width:42px!important}.hs-ct .hs-in.b{width:46px!important}.hs-ct .hs-gc{min-width:110px}
 .hs-ct th.v{min-width:50px}
 @media (max-width:1400px){.hs3{grid-template-columns:250px minmax(0,1fr)}.hs3-r{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}}
+
+/* ===== Trang cấp 2: mở rộng toàn bề ngang (28/11) ===== */
+.pg-bar{display:none}
+body.pg-sub .hero{display:none}
+body.pg-sub .layout{max-width:1760px;grid-template-columns:minmax(0,1fr)!important;margin-top:14px}
+body.pg-sub #toolsCol,body.pg-sub #colR{display:none!important}
+body.pg-sub .content>.sec-title,body.pg-sub #searchForm{display:none}
+body.pg-sub .pg-bar{display:flex;gap:10px;align-items:center;position:sticky;top:0;z-index:20;background:var(--bg,#f6f7f9);padding:8px 0 10px;margin-bottom:6px}
+body.pg-sub .pg-bar .pill{margin:0}
+body.pg-sub .main>.nav-row,body.pg-sub .box>.nav-row{display:none}
+body.pg-sub .box{max-width:none}
+.hs-steps{display:flex;flex-wrap:wrap;gap:6px;list-style:none;padding:0;margin:8px 0 12px;counter-reset:st}
+.hs-steps li{counter-increment:st;flex:1 1 200px;padding:7px 10px;border:1px solid var(--line,#dde2ea);border-radius:8px;font-size:12.5px;color:#6b7280;background:#fff}
+.hs-steps li::before{content:counter(st) ". ";font-weight:700}
+.hs-steps li.on{border-color:#1e62d0;color:#1e3a8a;background:#eef4ff}
+.hs-steps li.ok{border-color:#1b6e3a;color:#1b6e3a;background:#e3f4e8}
+.hs-rl .hs-rlg td{background:#f3f6fb}
+.hs-rl .hs-rlc td:first-child{padding-left:22px;font-size:13px}
+.hs-rlk{display:inline-block;min-width:22px;font-weight:700;color:#1e3a8a}
+.hs-rl .hs-gc{width:100%;min-width:180px}
+.pw-st small{display:inline-block;margin-top:2px}

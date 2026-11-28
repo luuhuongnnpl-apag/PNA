@@ -231,7 +231,8 @@ const TABS = [["hoc-tap", "HỌC TẬP", "📘"], ["ren-luyen", "RÈN LUYỆN", 
 const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
 const r1 = x => Math.round(x * 10 + 1e-9) / 10, r2 = x => Math.round(x * 100 + 1e-9) / 100;
 const numOf = v => (v === "" || v == null || isNaN(+v)) ? null : +v;
-/* Điểm học phần: điểm nhập trực tiếp, hoặc TX 10% + ĐK 30% + Thi 60% (Điều 10 khoản 1, 5) */
+/* Điểm học phần: điểm cuối cùng do sinh viên/CVHT nhập (điểm thành phần đã có trên phần mềm đào tạo của Học viện).
+   Dữ liệu cũ chỉ có điểm thành phần vẫn được tính: TX 10% + ĐK 30% + Thi 60% (Điều 10 khoản 1, 5). */
 function diemHP(v) {
   if (!v) return null;
   const d = numOf(v.diem); if (d != null) return d;
@@ -274,13 +275,13 @@ const hkOfKy = (khoa, ky) => { const [y, n] = ky.split("_"); return (+y.split("-
 const hkNow = khoa => { const n = namThu(khoa); return n ? Math.min(10, (n - 1) * 2 + (kyNow().endsWith("_1") ? 1 : 2)) : 0; };
 
 /* Rèn luyện — Thông tư 40/2026/TT-BGDĐT (hiệu lực 30/6/2026): 5 nhóm, thang 100 */
-const DRL_N = [
+let DRL_N = [
   ["n1", "Chấp hành pháp luật và nội quy, quy chế của nhà trường", 25],
   ["n2", "Tinh thần, thái độ trong học tập (tham gia học tập, NCKH, kỳ thi; vượt khó)", 20],
   ["n3", "Hoạt động chính trị - xã hội, văn hóa, văn nghệ, thể thao, tình nguyện, phòng chống tội phạm", 20],
   ["n4", "Trách nhiệm công dân trong quan hệ cộng đồng", 15],
   ["n5", "Cán bộ lớp, đoàn thể; thành tích NCKH, cuộc thi, khen thưởng", 20]];
-const xlDrl = d => d == null ? "" : d >= 90 ? "Xuất sắc" : d >= 80 ? "Tốt" : d >= 70 ? "Khá" : d >= 50 ? "Trung bình" : "Yếu";
+let xlDrl = d => d == null ? "" : d >= 90 ? "Xuất sắc" : d >= 80 ? "Tốt" : d >= 70 ? "Khá" : d >= 50 ? "Trung bình" : "Yếu";
 
 /* Phong trào: điểm gợi ý (tạm tính, chờ quy định chi tiết của Học viện) */
 const HD_NHOM = { n3: "Chính trị - xã hội, văn hóa, văn nghệ, thể thao, tình nguyện", n4: "Công dân với cộng đồng (tuyên truyền, hoạt động xã hội được biểu dương)", n5: "Cán bộ lớp, đoàn thể; NCKH, cuộc thi, khen thưởng" };
@@ -292,7 +293,8 @@ const kyOfDate = d => { const m = /^(\d{4})-(\d{2})/.exec(d || ""); if (!m) retu
 function hdTong(acts, ky) {
   const out = { n3: 0, n4: 0, n5: 0 };
   acts.filter(a => a.tt === "ok" && (!ky || a.ky === ky)).forEach(a => { if (out[a.nhom] != null) out[a.nhom] += hdDiem(a); });
-  out.n3 = Math.min(20, out.n3); out.n4 = Math.min(15, out.n4); out.n5 = Math.min(20, out.n5);
+  const mx = Object.fromEntries(DRL_N.map(([g, , m]) => [g, m]));
+  out.n3 = Math.min(mx.n3, out.n3); out.n4 = Math.min(mx.n4, out.n4); out.n5 = Math.min(mx.n5, out.n5);
   return out;
 }
 const DON_TT = { "cho-duyet": "Đang xử lý", "bo-sung": "Cần bổ sung", "da-duyet": "Đã duyệt", "tu-choi": "Không duyệt", "rut": "Đã rút", "nhap": "Bản nháp" };
@@ -323,7 +325,7 @@ async function renderSv(mssv, tab) {
   drawSv(V);
 }
 function drawSv(V) {
-  const { s, lop, ct, edit } = V;
+  const { s, lop, ct, edit } = V; useKhung(s);
   const th = ct ? hocTapTH(ct, s.hocTap) : null;
   const lastK = Object.keys(s.drl || {}).sort().pop();
   const info = [["Mã sinh viên", s.mssv], ["Ngày sinh", fmtD(s.ngaySinh)], ["Lớp", s.lop + (lop && lop.ten ? " — " + lop.ten : "")], ["Ngành", s.nganh], ["Khóa", s.khoa ? s.khoa + (namThu(s.khoa) ? ` (năm thứ ${namThu(s.khoa)})` : "") : ""], ["Hệ đào tạo", s.he],
@@ -362,7 +364,7 @@ function tabHT(V, th) {
   const inp = (h, f, v, w) => self ? `<input class="hs-in" data-k="${esc(h.k)}" data-f="${f}" value="${esc(v ?? "")}" inputmode="decimal"${w ? ` style="width:${w}px"` : ""}>` : esc(v ?? "");
   const ck = (h, f, v, t) => `<label class="hs-tick" title="${t}"><input type="checkbox" data-k="${esc(h.k)}" data-f="${f}"${v ? " checked" : ""}${self ? "" : " disabled"}></label>`;
   const rowsOf = hk => { let lastG = "", i = 0; return plan.filter(h => +h.hk === hk).map(h => {
-    let g = ""; if ((h.nhom || "") !== lastG) { lastG = h.nhom || ""; if (lastG) g = `<tr class="hs-grp"><td></td><td colspan="14"><i>${esc(lastG)}</i></td></tr>`; }
+    let g = ""; if ((h.nhom || "") !== lastG) { lastG = h.nhom || ""; if (lastG) g = `<tr class="hs-grp"><td></td><td colspan="11"><i>${esc(lastG)}</i></td></tr>`; }
     const v = ht[h.k] || {}, d = diemHP(v), c = chuOf(d), tc = h.loai === "TC", dk = h.loai === "DK";
     const st = d == null ? (legacyPass(v) ? ["Đạt", "ok"] : v.tt === "chua" ? ["Chưa đạt", "f"] : ["", ""]) : dk ? (d >= 5 ? ["Đạt (P)", "ok"] : ["Chưa đạt", "f"]) : d >= 4 ? ["Đạt", "ok"] : ["Chưa đạt (F)", "f"];
     const miss = !datHP(h, v) ? (h.tq || []).filter(cd => byCode[cd] && !datHP(byCode[cd], ht[byCode[cd].k]) && (+h.hk <= now + 1)) : [];
@@ -370,14 +372,13 @@ function tabHT(V, th) {
       <td class="c">${++i}</td><td class="hs-ma">${esc(h.ma || "—")}</td>
       <td class="hs-ten">${tc ? `<i>${esc(h.ten)}</i>` : esc(h.ten)}${dk ? ` <small class="muted">(điều kiện)</small>` : ""}${(h.tq || []).length ? `<br><small class="muted">Tiên quyết: ${esc(h.tq.join(", "))}</small>` : ""}${miss.length ? `<br><small class="hs-warn">⚠ Chưa đạt HP tiên quyết: ${esc(miss.map(cd => byCode[cd].ten).join("; "))}</small>` : ""}</td>
       <td class="c">${esc(h.tc)}</td>
-      <td class="c">${inp(h, "tx", v.tx, 44)}</td><td class="c">${inp(h, "dk", v.dk, 44)}</td><td class="c">${inp(h, "thi", v.thi, 44)}</td>
-      <td class="c hs-d">${self ? `<input class="hs-in b" data-k="${esc(h.k)}" data-f="diem" value="${esc(v.diem ?? "")}" placeholder="${d != null && numOf(v.diem) == null ? d : ""}" inputmode="decimal" style="width:48px">` : (d ?? "")}</td>
+      <td class="c hs-d">${self ? `<input class="hs-in b" data-k="${esc(h.k)}" data-f="diem" value="${esc(v.diem ?? (d ?? ""))}" inputmode="decimal" style="width:56px" title="Điểm học phần (thang 10)">` : (d ?? "")}</td>
       <td class="c"><b>${dk ? (d == null ? "" : d >= 5 ? "P" : "F") : c ? c[1] : ""}</b></td><td class="c">${!dk && c ? c[2].toFixed(1) : ""}</td>
       <td class="c hs-st ${st[1]}">${st[0]}</td>
       <td class="c">${ck(h, "ct", v.ct || v.tt === "cai-thien", "Đã học cải thiện")}</td><td class="c">${ck(h, "bs", v.bs, "Học lại / bổ sung")}</td><td class="c">${ck(h, "ctl", v.ctl, "Chưa tích lũy")}</td>
       <td>${self ? `<input class="hs-gc" data-k="${esc(h.k)}" data-f="gc" value="${esc(v.gc || "")}" placeholder="Ghi chú…">` : esc(v.gc || "")}</td></tr>`; }).join(""); };
-  const head = `<thead><tr><th class="c" rowspan="2">STT</th><th rowspan="2">Mã HP</th><th rowspan="2">Tên học phần</th><th class="c" rowspan="2">TC</th><th class="c" colspan="4">Điểm (thang 10)</th><th class="c" colspan="2">Quy đổi</th><th class="c" rowspan="2">Tình trạng</th><th class="c" colspan="3">Đánh dấu</th><th rowspan="2">Ghi chú</th></tr>
-    <tr><th class="c v">TX<br>10%</th><th class="c v">Định kỳ<br>30%</th><th class="c v">Thi<br>60%</th><th class="c v">Điểm HP</th><th class="c v">Chữ</th><th class="c v">Thang 4</th><th class="c v">Cải thiện</th><th class="c v">Học lại / bổ sung</th><th class="c v">Chưa tích lũy</th></tr></thead>`;
+  const head = `<thead><tr><th class="c" rowspan="2">STT</th><th rowspan="2">Mã HP</th><th rowspan="2">Tên học phần</th><th class="c" rowspan="2">TC</th><th class="c" rowspan="2">Điểm HP<br><small>(thang 10)</small></th><th class="c" colspan="2">Quy đổi</th><th class="c" rowspan="2">Tình trạng</th><th class="c" colspan="3">Đánh dấu</th><th rowspan="2">Ghi chú</th></tr>
+    <tr><th class="c v">Chữ</th><th class="c v">Thang 4</th><th class="c v">Cải thiện</th><th class="c v">Học lại / bổ sung</th><th class="c v">Chưa tích lũy</th></tr></thead>`;
   const sumRow = hk => { const H = th.hk[hk] || {}; const k = kyOfHk(s.khoa, hk), d = (s.drl || {})[k];
     return `<div class="hs-hksum"><span>TB học kỳ: <b>${H.g4 != null ? H.g4.toFixed(2) : "—"}</b> (thang 4) · <b>${H.g10 != null ? H.g10.toFixed(2) : "—"}</b> (thang 10)</span><span>Học lực: <b>${hocLuc(H.g4) || "—"}</b></span><span>Tín chỉ đạt: <b>${H.dat || 0}</b>${H.f ? ` · <span style="color:#b3261e">${H.f} TC chưa đạt</span>` : ""}</span><span>Rèn luyện: <b>${d && d.diem != null ? d.diem : "—"}</b> ${d ? xlChip(d.xepLoai) : ""}</span></div>`; };
   const sec = (hk, open) => { const meta = (ct.hocKy || []).find(h => +h.hk === hk) || {}; const k = kyOfHk(s.khoa, hk);
@@ -388,35 +389,101 @@ function tabHT(V, th) {
     : hks.map(hk => sec(hk, true)).join("");
   return `<div class="sbox"><h3 class="sbox-title">HỌC TẬP — ${esc(ct.ten || ct.id)}</h3>
     <div class="hs-sw"><button type="button" data-htview="tong" class="${V.view === "tong" ? "on" : ""}">Bảng tổng toàn khóa</button><button type="button" data-htview="ky" class="${V.view === "ky" ? "on" : ""}">Xem theo học kỳ</button></div>
-    <p class="muted hs-sm">${self ? "Nhập điểm thành phần (TX 10%, định kỳ 30%, thi 60%) để tự tính điểm học phần, hoặc nhập thẳng điểm học phần; dữ liệu tự lưu. " : ""}Quy đổi theo Điều 10, 11 Quy chế đào tạo đại học của Học viện (QĐ 2567-QĐ/HVHCQTC): A+ 4,0 · A 3,7 · B+ 3,5 · B 3,0 · C+ 2,5 · C 2,0 · D+ 1,5 · D 1,0 · F 0. Học phần <i>in nghiêng</i> là tự chọn; học phần điều kiện (GDTC, GDQP-AN) chỉ xét đạt (P ≥ 5,0), không tính điểm trung bình.</p>
+    <p class="muted hs-sm">${self ? "Chỉ nhập điểm học phần cuối cùng (thang 10) theo kết quả đã công bố trên phần mềm quản lý đào tạo của Học viện; dữ liệu tự lưu. " : ""}Quy đổi theo Điều 10, 11 Quy chế đào tạo đại học của Học viện (QĐ 2567-QĐ/HVHCQTC): A+ 4,0 · A 3,7 · B+ 3,5 · B 3,0 · C+ 2,5 · C 2,0 · D+ 1,5 · D 1,0 · F 0. Học phần <i>in nghiêng</i> là tự chọn; học phần điều kiện (GDTC, GDQP-AN) chỉ xét đạt (P ≥ 5,0), không tính điểm trung bình.</p>
     ${body}</div>`;
 }
 
-/* ---- RÈN LUYỆN ---- */
+/* ---- RÈN LUYỆN ----
+   Phiếu tự đánh giá theo khung Điều 17 Thông tư 40/2026/TT-BGDĐT (5 nhóm, 13 tiêu chí). Quy trình: sinh viên tự chấm từng
+   tiêu chí, ghi minh chứng, gửi phiếu → CVHT (họp lớp cùng ban cán sự) đánh giá theo nhóm, chốt → Hội đồng Khoa/Học viện. */
+let DRL_TC = {
+  n1: [["1a", "Chấp hành chủ trương của Đảng, chính sách, pháp luật của Nhà nước và chỉ đạo của Bộ, ngành, cơ quan quản lý được áp dụng trong nhà trường"], ["1b", "Chấp hành nội quy, quy chế và các quy định khác của Học viện"]],
+  n2: [["2a", "Ý thức, thái độ, trách nhiệm trong học tập và nghiên cứu khoa học"], ["2b", "Ý thức, trách nhiệm khi tham gia các kỳ thi, cuộc thi"], ["2c", "Tinh thần vượt khó, phấn đấu vươn lên trong học tập"]],
+  n3: [["3a", "Tham gia các hoạt động rèn luyện về chính trị, xã hội, văn hóa, văn nghệ, thể thao (sinh viên khuyết tật được đánh giá phù hợp tình trạng sức khỏe)"], ["3b", "Tham gia hoạt động công ích, tình nguyện, công tác xã hội"], ["3c", "Tham gia tuyên truyền, phòng chống tội phạm và các tệ nạn xã hội"]],
+  n4: [["4a", "Tuyên truyền chủ trương của Đảng, chính sách, pháp luật của Nhà nước trong cộng đồng"], ["4b", "Tham gia các hoạt động xã hội được ghi nhận, biểu dương, khen thưởng"]],
+  n5: [["5a", "Đảm nhiệm công tác lớp, Đảng, Đoàn, Hội và tổ chức khác của Học viện (trách nhiệm, uy tín, kỹ năng tổ chức, hiệu quả)"], ["5b", "Hỗ trợ, tham gia tích cực các hoạt động chung của lớp, khoa, Học viện"], ["5c", "Thành tích trong nghiên cứu khoa học, cuộc thi, sáng kiến, khởi nghiệp hoặc hoạt động khác được khen thưởng"]]
+};
+let DRL_CC = "Điều 17 Thông tư số 40/2026/TT-BGDĐT ngày 15/5/2026 của Bộ trưởng Bộ Giáo dục và Đào tạo quy định về công tác sinh viên";
+/* Khung đánh giá theo khóa (Công văn 2020-CV/HVHCQTC ngày 15/9/2026): sinh viên trúng tuyển 2023, 2024, 2025 đánh giá theo
+   Quyết định 4185/QĐ-HCQG ngày 08/9/2023 (khung Thông tư 16/2015: 20 · 25 · 20 · 25 · 10; 6 mức xếp loại);
+   khóa trúng tuyển từ 2026 theo Thông tư 40/2026/TT-BGDĐT (25 · 20 · 20 · 15 · 20; 5 mức). */
+const KH_TT40 = { key: "tt40", N: DRL_N, TC: DRL_TC, CC: DRL_CC, xl: xlDrl, mucXL: "Xuất sắc 90–100 · Tốt 80 đến dưới 90 · Khá 70 đến dưới 80 · Trung bình 50 đến dưới 70 · Yếu dưới 50 (Điều 18 Thông tư 40/2026/TT-BGDĐT)" };
+const KH_4185 = { key: "4185",
+  N: [["n1", "Đánh giá về ý thức tham gia học tập", 20], ["n2", "Đánh giá về ý thức chấp hành nội quy, quy chế, quy định trong Học viện", 25],
+    ["n3", "Đánh giá về ý thức tham gia các hoạt động chính trị, xã hội, văn hóa, văn nghệ, thể thao, phòng chống tội phạm và các tệ nạn xã hội", 20],
+    ["n4", "Đánh giá về ý thức công dân trong quan hệ cộng đồng", 25], ["n5", "Đánh giá về ý thức và kết quả khi tham gia công tác cán bộ lớp, các đoàn thể, tổ chức trong Học viện hoặc người học đạt được thành tích đặc biệt trong học tập, rèn luyện", 10]],
+  TC: {
+    n1: [["1a", "Ý thức và thái độ trong học tập"], ["1b", "Ý thức và thái độ tham gia các câu lạc bộ học thuật, hoạt động học thuật, ngoại khóa, nghiên cứu khoa học"], ["1c", "Ý thức và thái độ tham gia các kỳ thi, cuộc thi"], ["1d", "Tinh thần vượt khó, phấn đấu vươn lên trong học tập"], ["1đ", "Kết quả học tập"]],
+    n2: [["2a", "Ý thức chấp hành các văn bản chỉ đạo của ngành, của cơ quan chỉ đạo cấp trên được thực hiện trong Học viện"], ["2b", "Ý thức chấp hành các nội quy, quy chế và các quy định khác của Học viện"]],
+    n3: [["3a", "Ý thức và hiệu quả tham gia các hoạt động rèn luyện về chính trị, xã hội, văn hóa, văn nghệ, thể thao"], ["3b", "Ý thức tham gia các hoạt động công ích, tình nguyện, công tác xã hội"], ["3c", "Tham gia tuyên truyền, phòng chống tội phạm và các tệ nạn xã hội"]],
+    n4: [["4a", "Ý thức chấp hành và tham gia tuyên truyền các chủ trương của Đảng, chính sách, pháp luật của Nhà nước trong cộng đồng"], ["4b", "Ý thức tham gia các hoạt động xã hội có thành tích được ghi nhận, biểu dương, khen thưởng"], ["4c", "Có tinh thần chia sẻ, giúp đỡ người thân, người có khó khăn, hoạn nạn"]],
+    n5: [["5a", "Ý thức, tinh thần, thái độ, uy tín và hiệu quả công việc khi được phân công quản lý lớp, các tổ chức Đảng, Đoàn, Hội và các tổ chức khác trong Học viện"], ["5b", "Kỹ năng tổ chức, quản lý lớp, quản lý các tổ chức trong Học viện"], ["5c", "Hỗ trợ và tham gia tích cực vào các hoạt động chung của lớp, tập thể, khoa và Học viện"], ["5d", "Đạt thành tích đặc biệt trong học tập, rèn luyện"]]
+  },
+  CC: "Quyết định số 4185/QĐ-HCQG ngày 08/9/2023 của Giám đốc Học viện Hành chính Quốc gia (áp dụng theo Công văn số 2020-CV/HVHCQTC ngày 15/9/2026 cho sinh viên trúng tuyển năm 2023, 2024, 2025)",
+  xl: d => d == null ? "" : d >= 90 ? "Xuất sắc" : d >= 80 ? "Tốt" : d >= 65 ? "Khá" : d >= 50 ? "Trung bình" : d >= 35 ? "Yếu" : "Kém",
+  mucXL: "Xuất sắc 90–100 · Tốt 80 đến dưới 90 · Khá 65 đến dưới 80 · Trung bình 50 đến dưới 65 · Yếu 35 đến dưới 50 · Kém dưới 35" };
+const khungOf = s => (+s.khoa && +s.khoa <= 2025) ? KH_4185 : KH_TT40;
+let KH = KH_TT40;
+function useKhung(s) { KH = khungOf(s); DRL_N = KH.N; DRL_TC = KH.TC; DRL_CC = KH.CC; xlDrl = KH.xl; return KH; }
 function tabRL(V, th) {
-  const { s, edit, own, acts } = V;
+  const { s, edit, own, acts } = V; useKhung(s);
   const ks = kyList(s.khoa).filter(k => k <= kyNow());
   if (!V.ky || !ks.includes(V.ky)) V.ky = ks[ks.length - 1] || kyNow();
   const k = V.ky, hk = hkOfKy(s.khoa, k), H = th && th.hk[hk], tu = ((s.drlTu || {})[k]) || {}, off = (s.drl || {})[k] || {}, ch = off.chiTiet || {}, goiY = hdTong(acts, k);
-  const sum = o => DRL_N.reduce((n, [c]) => n + (numOf(o[c]) || 0), 0);
+  const tc = tu.c || {}, mc = tu.mc || {}, chot = off.diem != null, lock = !own || chot || (tu.gui && !V.rlSua);
+  const nSum = (n, o) => { const x = DRL_TC[n].map(([c]) => numOf(o[c])).filter(v => v != null); return x.length ? x.reduce((p, q) => p + q, 0) : (numOf(tu[n]) ?? null); };
+  const tuTot = DRL_N.reduce((t, [n]) => t + (nSum(n, tc) || 0), 0);
   const years = {}; Object.keys(s.drl || {}).forEach(x => { const y = x.split("_")[0]; (years[y] = years[y] || []).push(numOf(s.drl[x].diem)); });
   const yAvg = Object.entries(years).map(([y, a]) => { const v = a.filter(x => x != null); return [y, v.length ? r1(v.reduce((p, q) => p + q, 0) / v.length) : null]; }).sort();
   const yv = yAvg.map(x => x[1]).filter(x => x != null), toan = yv.length ? r1(yv.reduce((p, q) => p + q, 0) / yv.length) : null;
-  return `<div class="sbox"><h3 class="sbox-title">RÈN LUYỆN</h3>
+  const st = chot ? `<span class="hs-chip" style="color:#1b6e3a;background:#e3f4e8">Đã chốt: ${off.diem} điểm — ${esc(off.xepLoai || "")}</span>` : tu.gui ? `<span class="hs-chip" style="color:#1e40af;background:#e0e9fb">Đã gửi CVHT ${esc(fmtD(String(tu.guiAt || tu.at || "").slice(0, 10)))}</span>` : tu.at ? `<span class="hs-chip" style="color:#92400e;background:#fef3c7">Bản nháp — chưa gửi</span>` : `<span class="hs-chip" style="color:#6b7280;background:#eef0f3">Chưa tự đánh giá</span>`;
+  const rows = DRL_N.map(([n, name, m], gi) => `<tr class="hs-rlg"><td><b>${gi + 1}. ${esc(name)}</b>${["n3", "n4", "n5"].includes(n) && goiY[n] ? `<br><small class="muted">Phong trào đã xác nhận gợi ý: ${goiY[n]} điểm</small>` : ""}</td><td class="c"><b>${m}</b></td>
+      <td class="c"><b data-rlsum="${n}">${nSum(n, tc) ?? ""}</b></td><td></td>
+      <td class="c">${edit && !chot ? `<input class="hs-in b" data-rl="cv" data-c="${n}" data-max="${m}" value="${esc(ch[n] ?? nSum(n, tc) ?? "")}" style="width:56px">` : `<b>${esc(ch[n] ?? "")}</b>`}</td></tr>` +
+    DRL_TC[n].map(([c, t]) => `<tr class="hs-rlc"><td><span class="hs-rlk">${c}</span> ${esc(t)}</td><td class="c muted">≤ ${m}</td>
+      <td class="c">${lock ? esc(tc[c] ?? "") : `<input class="hs-in" data-rlc="${c}" data-n="${n}" data-max="${m}" value="${esc(tc[c] ?? "")}" inputmode="decimal" style="width:52px">`}</td>
+      <td>${lock ? `<small>${esc(mc[c] || "")}</small>` : `<input class="hs-gc" data-rlmc="${c}" value="${esc(mc[c] || "")}" placeholder="Minh chứng: hoạt động, giấy khen, link…">`}</td><td></td></tr>`).join("")).join("");
+  return `<div class="sbox"><h3 class="sbox-title">RÈN LUYỆN — PHIẾU TỰ ĐÁNH GIÁ KẾT QUẢ RÈN LUYỆN</h3>
     <div class="hs-kysel">${ks.map(x => `<button type="button" data-ky="${x}" class="${x === k ? "on" : ""}">HK ${ROMAN[hkOfKy(s.khoa, x)]}<small>${esc(x.split("_")[0].replace("-", "–"))}</small></button>`).join("")}</div>
-    <div class="hs-hksum"><span>Kết quả học tập kỳ này: <b>${H && H.g4 != null ? H.g4.toFixed(2) : "—"}</b> (thang 4) · học lực <b>${H ? hocLuc(H.g4) || "—" : "—"}</b></span><span>Tín chỉ đạt: <b>${H ? H.dat : 0}</b>${H && H.f ? ` · <span style="color:#b3261e">${H.f} TC chưa đạt</span>` : ""}</span><span>Phong trào đã xác nhận: <b>${goiY.n3 + goiY.n4 + goiY.n5}</b> điểm gợi ý</span></div>
-    <div class="tbl-wrap"><table class="adm-table hs-rl"><thead><tr><th>Nhóm tiêu chí (Thông tư 40/2026/TT-BGDĐT)</th><th class="c">Tối đa</th><th class="c">Gợi ý từ phong trào</th><th class="c">Sinh viên tự đánh giá</th><th class="c">CVHT / Hội đồng</th></tr></thead><tbody>
-      ${DRL_N.map(([c, n, m]) => `<tr><td>${esc(n)}</td><td class="c">${m}</td><td class="c">${goiY[c] != null ? goiY[c] : ""}</td>
-        <td class="c">${own ? `<input class="hs-in" data-rl="tu" data-c="${c}" data-max="${m}" value="${esc(tu[c] ?? "")}" style="width:56px">` : esc(tu[c] ?? "")}</td>
-        <td class="c">${edit ? `<input class="hs-in" data-rl="cv" data-c="${c}" data-max="${m}" value="${esc(ch[c] ?? tu[c] ?? "")}" style="width:56px">` : esc(ch[c] ?? "")}</td></tr>`).join("")}
-      <tr class="hs-tot"><td><b>Tổng điểm</b></td><td class="c">100</td><td class="c">${goiY.n3 + goiY.n4 + goiY.n5}</td><td class="c"><b id="rlTu">${sum(tu) || ""}</b> <small>${xlDrl(sum(tu) || null)}</small></td><td class="c"><b>${off.diem ?? ""}</b> ${xlChip(off.xepLoai)}</td></tr>
+    <div class="hs-hksum"><span>${esc(kyName(k))}: ${st}</span><span>Học tập kỳ này: <b>${H && H.g4 != null ? H.g4.toFixed(2) : "—"}</b> (thang 4) · ${H ? hocLuc(H.g4) || "—" : "—"}</span><span>Phong trào đã xác nhận: <b>${goiY.n3 + goiY.n4 + goiY.n5}</b> điểm gợi ý</span></div>
+    <ol class="hs-steps"><li class="${tu.at ? "ok" : "on"}">Sinh viên tự chấm từng tiêu chí, ghi minh chứng</li><li class="${tu.gui ? "ok" : tu.at ? "on" : ""}">Gửi phiếu cho ban cán sự lớp, cố vấn học tập</li><li class="${chot ? "ok" : tu.gui ? "on" : ""}">CVHT chủ trì họp lớp (BCS, BCH chi đoàn, chi hội) đánh giá, lập biên bản</li><li class="${chot ? "on" : ""}">Hội đồng cấp Khoa, cấp Học viện xét, công nhận</li></ol>
+    <div class="tbl-wrap"><table class="adm-table hs-rl"><thead><tr><th>Nội dung, tiêu chí đánh giá</th><th class="c">Điểm tối đa</th><th class="c">Sinh viên tự đánh giá</th><th>Minh chứng, giải trình</th><th class="c">Lớp / CVHT đánh giá</th></tr></thead><tbody>
+      ${rows}
+      <tr class="hs-tot"><td><b>TỔNG ĐIỂM</b></td><td class="c"><b>100</b></td><td class="c"><b id="rlTu">${tuTot || ""}</b> <small id="rlTuXl">${tuTot ? xlDrl(tuTot) : ""}</small></td><td></td><td class="c"><b>${off.diem ?? ""}</b> ${xlChip(off.xepLoai)}</td></tr>
     </tbody></table></div>
-    ${own ? `<div class="dlg-act" style="justify-content:flex-start"><label class="fld" style="flex:1;margin:0"><input id="rlNote" placeholder="Giải trình, minh chứng (nếu có)…" value="${esc(tu.gc || "")}"></label><button type="button" class="btn primary" id="rlTuSave">Gửi tự đánh giá</button></div>${tu.at ? `<p class="muted hs-sm">Đã gửi ${esc(fmtD(String(tu.at).slice(0, 10)))}.</p>` : ""}` : ""}
-    ${edit ? `<div class="dlg-act" style="justify-content:flex-start"><label class="fld" style="flex:1;margin:0"><input id="rlCvNote" placeholder="Nhận xét của CVHT / Hội đồng…" value="${esc(off.ghiChu || "")}"></label><button type="button" class="btn primary" id="rlCvSave">Chốt kết quả kỳ này</button></div>${tu.gc ? `<p class="hs-sm"><b>Giải trình của sinh viên:</b> ${esc(tu.gc)}</p>` : ""}` : ""}
-    <p class="muted hs-sm">Xếp loại theo Thông tư 40/2026/TT-BGDĐT: Xuất sắc ≥ 90 · Tốt 80–89 · Khá 70–79 · Trung bình 50–69 · Yếu &lt; 50. Điểm năm học = trung bình các kỳ; toàn khóa = trung bình các năm. Cột “gợi ý” cộng từ hoạt động đã được ban cán sự / CVHT xác nhận (tạm tính, chờ quy định chi tiết của Học viện).</p>
+    ${own && !chot ? (lock ? `<div class="dlg-act" style="justify-content:flex-start"><button type="button" class="btn" id="rlSua">✎ Sửa phiếu đã gửi</button><button type="button" class="btn" id="rlIn">🖨 In / lưu PDF phiếu</button></div>`
+      : `<label class="fld"><span>Tự nhận xét, giải trình chung</span><textarea id="rlNote" rows="2" class="fld-sel">${esc(tu.gc || "")}</textarea></label>
+      <div class="dlg-act" style="justify-content:flex-start"><button type="button" class="btn" id="rlNhap">Lưu nháp</button><button type="button" class="btn primary" id="rlGui">Gửi phiếu tự đánh giá</button>${tu.at ? `<button type="button" class="btn" id="rlIn">🖨 In / lưu PDF phiếu</button>` : ""}</div>`) : ""}
+    ${own && chot ? `<div class="dlg-act" style="justify-content:flex-start"><button type="button" class="btn" id="rlIn">🖨 In / lưu PDF phiếu</button></div>` : ""}
+    ${edit ? `${tu.gc ? `<p class="hs-sm"><b>Sinh viên tự nhận xét:</b> ${esc(tu.gc)}</p>` : ""}${!tu.gui && !chot ? `<p class="hs-warn hs-sm">Sinh viên chưa gửi phiếu tự đánh giá kỳ này.</p>` : ""}
+      ${chot ? `<p class="hs-sm"><b>Nhận xét:</b> ${esc(off.ghiChu || "—")}</p><div class="dlg-act" style="justify-content:flex-start"><button type="button" class="btn" id="rlMo">Mở lại để sửa kết quả</button><button type="button" class="btn" id="rlIn">🖨 In / lưu PDF phiếu</button></div>`
+        : `<div class="dlg-act" style="justify-content:flex-start"><label class="fld" style="flex:1;margin:0"><input id="rlCvNote" placeholder="Nhận xét của CVHT / tập thể lớp…" value="${esc(off.ghiChu || "")}"></label><button type="button" class="btn primary" id="rlCvSave">Chốt kết quả kỳ này</button>${tu.at ? `<button type="button" class="btn" id="rlIn">🖨 In phiếu</button>` : ""}</div>`}` : ""}
+    <p class="muted hs-sm">Căn cứ: ${esc(DRL_CC)}. Điểm các tiêu chí trong một nhóm cộng lại không vượt mức tối đa của nhóm. Xếp loại: ${esc(KH.mucXL)}. Theo Công văn 2020-CV/HVHCQTC: sinh viên đạt điểm ở nhiều nội dung thì lấy mục điểm cao nhất; vi phạm ở nội dung nào thì không tính điểm nội dung đó; bị nhắc nhở bằng văn bản thì kết quả kỳ đó không quá loại khá; không tự đánh giá hoặc nộp phiếu không đúng hạn bị xếp loại yếu hoặc kém.</p>
     <h4 class="hs-h4">Kết quả rèn luyện các kỳ</h4>
-    <table class="adm-table"><thead><tr><th>Học kỳ</th><th class="c">Điểm</th><th>Xếp loại</th><th>Ghi chú</th></tr></thead><tbody>${Object.keys(s.drl || {}).sort().map(x => `<tr><td>${esc(kyName(x))}</td><td class="c">${s.drl[x].diem ?? "—"}</td><td>${xlChip(s.drl[x].xepLoai)}</td><td class="muted">${esc(s.drl[x].ghiChu || "")}</td></tr>`).join("") || `<tr><td colspan="4" class="muted">Chưa có.</td></tr>`}</tbody></table>
+    <table class="adm-table"><thead><tr><th>Học kỳ</th><th class="c">Tự đánh giá</th><th class="c">Kết quả</th><th>Xếp loại</th><th>Ghi chú</th></tr></thead><tbody>${[...new Set([...Object.keys(s.drl || {}), ...Object.keys(s.drlTu || {})])].sort().map(x => { const d = (s.drl || {})[x] || {}, t = (s.drlTu || {})[x] || {}, tt = DRL_N.reduce((n, [g]) => n + (DRL_TC[g].map(([c]) => numOf((t.c || {})[c]) || 0).reduce((p, q) => p + q, 0) || numOf(t[g]) || 0), 0); return `<tr><td>${esc(kyName(x))}</td><td class="c">${t.at ? tt : "—"}</td><td class="c">${d.diem ?? "—"}</td><td>${xlChip(d.xepLoai)}</td><td class="muted">${esc(d.ghiChu || "")}</td></tr>`; }).join("") || `<tr><td colspan="5" class="muted">Chưa có.</td></tr>`}</tbody></table>
     ${yAvg.length ? `<p class="hs-sm">${yAvg.map(([y, v]) => `Năm học ${esc(y.replace("-", "–"))}: <b>${v ?? "—"}</b> ${v != null ? xlChip(xlDrl(v)) : ""}`).join(" · ")}${toan != null ? ` · Toàn khóa (đến nay): <b>${toan}</b>` : ""}</p>` : ""}</div>`;
+}
+/* In phiếu tự đánh giá (cửa sổ in, lưu PDF được) */
+function inPhieuRL(V) {
+  useKhung(V.s); const { s } = V, k = V.ky, tu = ((s.drlTu || {})[k]) || {}, off = (s.drl || {})[k] || {}, tc = tu.c || {}, mc = tu.mc || {}, ch = off.chiTiet || {};
+  const nSum = n => { const x = DRL_TC[n].map(([c]) => numOf(tc[c])).filter(v => v != null); return x.length ? x.reduce((p, q) => p + q, 0) : (numOf(tu[n]) ?? ""); };
+  const tot = DRL_N.reduce((t, [n]) => t + (+nSum(n) || 0), 0), [y, n] = k.split("_");
+  const w = window.open("", "_blank"); if (!w) return P.toast("Trình duyệt chặn cửa sổ in. Hãy cho phép cửa sổ bật lên.", "err");
+  w.document.write(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Phiếu tự đánh giá rèn luyện — ${esc(s.mssv)}</title><style>
+    body{font:13pt "Times New Roman",serif;margin:18mm 16mm;color:#000}table{border-collapse:collapse;width:100%}td,th{border:1px solid #000;padding:4px 6px;vertical-align:top}th{font-weight:bold;text-align:center}
+    .hd{display:grid;grid-template-columns:1fr 1fr;text-align:center;border:0}.hd td{border:0}.c{text-align:center}.g td{font-weight:bold}h1{font-size:14pt;text-align:center;margin:14px 0 4px}p{margin:4px 0}.sig{display:grid;grid-template-columns:1fr 1fr;text-align:center;margin-top:18px}
+    @page{size:A4;margin:0}</style></head><body>
+    <table class="hd"><tr><td>HỌC VIỆN CHÍNH TRỊ QUỐC GIA HỒ CHÍ MINH<br><b>HỌC VIỆN HÀNH CHÍNH VÀ QUẢN TRỊ CÔNG</b><br><b>KHOA LUẬT</b></td><td><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br><b><u>Độc lập - Tự do - Hạnh phúc</u></b></td></tr></table>
+    <h1>PHIẾU TỰ ĐÁNH GIÁ KẾT QUẢ RÈN LUYỆN CỦA SINH VIÊN</h1><p class="c">Học kỳ ${n === "1" ? "I" : "II"}, năm học ${esc(y.replace("-", " - "))}</p>
+    <p>Họ và tên: <b>${esc(s.hoTen)}</b> &nbsp; Mã sinh viên: <b>${esc(s.mssv)}</b> &nbsp; Ngày sinh: ${esc(fmtD(s.ngaySinh))}</p><p>Lớp: ${esc(s.lop)} &nbsp; Ngành: ${esc(s.nganh || "")} &nbsp; Khóa: ${esc(s.khoa || "")}</p>
+    <table><thead><tr><th style="width:46%">Nội dung, tiêu chí đánh giá</th><th>Điểm tối đa</th><th>SV tự đánh giá</th><th>Minh chứng</th><th>Lớp / CVHT đánh giá</th></tr></thead><tbody>
+    ${DRL_N.map(([g, name, m], i) => `<tr class="g"><td>${i + 1}. ${esc(name)}</td><td class="c">${m}</td><td class="c">${nSum(g)}</td><td></td><td class="c">${ch[g] ?? ""}</td></tr>` + DRL_TC[g].map(([c, t]) => `<tr><td>${c}) ${esc(t)}</td><td></td><td class="c">${esc(tc[c] ?? "")}</td><td>${esc(mc[c] || "")}</td><td></td></tr>`).join("")).join("")}
+    <tr class="g"><td>TỔNG CỘNG</td><td class="c">100</td><td class="c">${tot}</td><td></td><td class="c">${off.diem ?? ""}</td></tr></tbody></table>
+    <p>Xếp loại tự đánh giá: <b>${xlDrl(tot)}</b>${off.diem != null ? ` · Kết quả lớp / CVHT: <b>${off.diem} — ${esc(off.xepLoai || "")}</b>` : ""}</p>${tu.gc ? `<p>Tự nhận xét: ${esc(tu.gc)}</p>` : ""}${off.ghiChu ? `<p>Nhận xét của CVHT: ${esc(off.ghiChu)}</p>` : ""}
+    <p style="font-size:11pt"><i>Căn cứ: ${esc(DRL_CC)}.</i></p>
+    <div class="sig"><div><b>CỐ VẤN HỌC TẬP</b><br><i>(Ký, ghi rõ họ tên)</i><br><br><br><br>${esc((s.cvht || []).map(P.showName).join(", "))}</div><div><i>Hà Nội, ngày ..... tháng ..... năm ${new Date().getFullYear()}</i><br><b>SINH VIÊN</b><br><i>(Ký, ghi rõ họ tên)</i><br><br><br><br>${esc(s.hoTen)}</div></div>
+    <script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`);
+  w.document.close();
 }
 
 /* ---- PHONG TRÀO ---- */
@@ -461,7 +528,7 @@ async function bindSv(V) {
   document.querySelectorAll("[data-ky]").forEach(b => b.onclick = () => { V.ky = b.dataset.ky; rerender(); });
   /* Học tập: lưu từng ô */
   const putHT = async (k, f, val) => {
-    const v = { ...((s.hocTap || {})[k] || {}), [f]: val, at: nowISO(), by: myEmail() };
+    const v = { ...((s.hocTap || {})[k] || {}), [f]: val, ...(f === "diem" ? { tx: "", dk: "", thi: "" } : {}), at: nowISO(), by: myEmail() };
     s.hocTap = { ...(s.hocTap || {}), [k]: v };
     try { await setDoc(doc(db, "pna_hoso", s.mssv), { hocTap: { [k]: v }, updated: nowISO(), by: myEmail() }, { merge: true }); ALL = null; } catch (e) { P.toast("Chưa lưu được: " + e.message, "err"); }
   };
@@ -475,7 +542,36 @@ async function bindSv(V) {
   }));
   /* Rèn luyện */
   const rlVals = who => { const o = {}; let bad = false; document.querySelectorAll(`[data-rl="${who}"]`).forEach(i => { const t = i.value.trim(); if (t === "") return; const n = +t.replace(",", "."); if (isNaN(n) || n < 0 || n > +i.dataset.max) bad = true; o[i.dataset.c] = n; }); return bad ? null : o; };
-  if ($("#rlTuSave")) $("#rlTuSave").onclick = async () => { const o = rlVals("tu"); if (!o) return P.toast("Điểm mỗi nhóm không vượt mức tối đa.", "err"); o.gc = $("#rlNote").value.trim(); o.at = nowISO(); try { await save({ drlTu: { ...(s.drlTu || {}), [V.ky]: o } }, "tự đánh giá RL " + V.ky); } catch (e) { P.toast("Chưa lưu được: " + e.message, "err"); } };
+  /* Phiếu tự đánh giá: cộng nhóm ngay khi gõ */
+  const rlTuRead = () => { const c = {}, mc = {}, sums = {}; let bad = "";
+    document.querySelectorAll("[data-rlc]").forEach(i => { const t = i.value.trim().replace(",", "."); if (t === "") return; const n = +t; if (isNaN(n) || n < 0) bad = "Điểm tiêu chí " + i.dataset.rlc + " không hợp lệ."; c[i.dataset.rlc] = n; sums[i.dataset.n] = (sums[i.dataset.n] || 0) + n; });
+    document.querySelectorAll("[data-rlmc]").forEach(i => { if (i.value.trim()) mc[i.dataset.rlmc] = i.value.trim(); });
+    DRL_N.forEach(([g, name, m]) => { if ((sums[g] || 0) > m) bad = bad || `Nhóm ${g.slice(1)} vượt mức tối đa ${m} điểm (đang ${sums[g]}).`; });
+    return { c, mc, sums, bad }; };
+  const rlTuShow = () => { const { sums, bad } = rlTuRead(); let t = 0;
+    DRL_N.forEach(([g, , m]) => { const e = document.querySelector(`[data-rlsum="${g}"]`); if (e) { e.textContent = sums[g] != null ? sums[g] : ""; e.style.color = (sums[g] || 0) > m ? "#b3261e" : ""; } t += Math.min(sums[g] || 0, m); });
+    if ($("#rlTu")) $("#rlTu").textContent = t || ""; if ($("#rlTuXl")) $("#rlTuXl").textContent = t ? xlDrl(t) : ""; return bad; };
+  document.querySelectorAll("[data-rlc]").forEach(i => i.addEventListener("input", rlTuShow));
+  const rlTuSave = async gui => {
+    const { c, mc, sums, bad } = rlTuRead(); if (bad) return P.toast(bad, "err");
+    if (gui) {
+      const thieu = Object.values(DRL_TC).flat().filter(([cc]) => c[cc] == null).map(([cc]) => cc);
+      if (thieu.length) return P.toast("Chấm đủ các tiêu chí trước khi gửi (còn thiếu: " + thieu.join(", ") + "). Tiêu chí không có thì ghi 0.", "err");
+      const tot = DRL_N.reduce((n, [g]) => n + (sums[g] || 0), 0);
+      if (!await P.ask(`Gửi phiếu tự đánh giá ${kyName(V.ky)}: ${tot} điểm — ${xlDrl(tot)} cho ban cán sự lớp và cố vấn học tập?`)) return;
+    }
+    const o = { khung: KH.key, c, mc, ...Object.fromEntries(DRL_N.map(([g]) => [g, sums[g] ?? null])), gc: ($("#rlNote") || {}).value ? $("#rlNote").value.trim() : "", at: nowISO(), gui: !!gui, ...(gui ? { guiAt: nowISO() } : {}) };
+    try { V.rlSua = false; await save({ drlTu: { ...(s.drlTu || {}), [V.ky]: o } }, (gui ? "gửi" : "lưu nháp") + " phiếu tự đánh giá RL " + V.ky); } catch (e) { P.toast("Chưa lưu được: " + e.message, "err"); }
+  };
+  if ($("#rlNhap")) $("#rlNhap").onclick = () => rlTuSave(false);
+  if ($("#rlGui")) $("#rlGui").onclick = () => rlTuSave(true);
+  if ($("#rlSua")) $("#rlSua").onclick = () => { V.rlSua = true; rerender(); };
+  document.querySelectorAll("#rlIn").forEach(b => b.onclick = () => inPhieuRL(V));
+  if ($("#rlMo")) $("#rlMo").onclick = async () => {
+    if (!await P.ask("Mở lại kết quả rèn luyện " + kyName(V.ky) + " để sửa? Kết quả đã chốt sẽ được gỡ cho tới khi chốt lại.")) return;
+    const d = { ...(s.drl || {}) }; const old = d[V.ky] || {}; d[V.ky] = { chiTiet: old.chiTiet || {}, ghiChu: old.ghiChu || "", diem: null, xepLoai: "" };
+    try { await save({ drl: d }, "mở lại RL " + V.ky); } catch (e) { P.toast("Chưa lưu được: " + e.message, "err"); }
+  };
   if ($("#rlCvSave")) $("#rlCvSave").onclick = async () => {
     const o = rlVals("cv"); if (!o) return P.toast("Điểm mỗi nhóm không vượt mức tối đa.", "err");
     if (DRL_N.some(([c]) => o[c] == null)) return P.toast("Nhập đủ điểm 5 nhóm tiêu chí trước khi chốt.", "err");

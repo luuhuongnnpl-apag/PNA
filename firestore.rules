@@ -201,6 +201,16 @@ service cloud.firestore {
     }
     match /pna_ctdt/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
 
+    // Yêu cầu đặt lại mật khẩu: quản trị hoặc CVHT gửi; GitHub Actions (quyền quản trị) áp dụng rồi xóa mật khẩu
+    match /pna_yeucau_tk/{id} {
+      allow create: if (isAdmin() || isCvht()) && request.resource.data.by == me()
+        && request.resource.data.viec == 'dat-mat-khau' && request.resource.data.tt == 'cho'
+        && request.resource.data.matKhau is string && request.resource.data.matKhau.size() >= 6
+        && request.resource.data.email.matches('.*@taikhoan[.]pna');
+      allow read: if isAdmin() || (signedIn() && resource.data.by == me());
+      allow delete: if isAdmin();
+    }
+
     // Nhật ký thao tác
     match /pna_activity/{id} {
       allow create: if signedIn();

@@ -484,17 +484,52 @@ async function renderLop(sel) {
       <span class="muted">Cố vấn: ${esc((cur.cvht || []).join(", ") || "chưa gắn")} · ${svs.length} sinh viên</span></div>
     <details class="more" open><summary>Cấp tài khoản sinh viên</summary>
       <p class="muted">Dán danh sách từ Excel, mỗi dòng một sinh viên theo thứ tự cột: <b>Mã SV · Họ và tên · Ngày sinh (dd/mm/yyyy) · Số điện thoại · Gmail (không bắt buộc)</b>.
-      Không có Gmail: tên đăng nhập là mã sinh viên, mật khẩu ban đầu là ngày sinh dạng <code>ddmmyyyy</code> (sinh viên đổi sau khi đăng nhập). Có Gmail: sinh viên bấm “Đăng nhập bằng Google”.</p>
+      Không có Gmail: tên đăng nhập là mã sinh viên, mật khẩu ban đầu là ngày sinh dạng <code>ddmmyyyy</code> (sinh viên đổi sau khi đăng nhập). Sinh viên quên mật khẩu: bấm <b>Đặt lại mật khẩu</b> ở dòng của sinh viên trong bảng dưới. Có Gmail: sinh viên bấm “Đăng nhập bằng Google”.</p>
       <textarea id="svPaste" rows="5" class="fld-sel" placeholder="2601LHOA001	Nguyễn Văn An	05/09/2008	0912345678"></textarea>
       <div class="dlg-act" style="justify-content:flex-start"><button type="button" class="btn primary" id="svCreate">Cấp tài khoản</button></div>
       <p class="err" id="svErr"></p><div id="svOut"></div></details>
     <div class="tbl-wrap"><table class="adm-table ftbl"><thead><tr><th>Mã SV</th><th>Họ và tên</th><th>Ngày sinh</th><th>Điện thoại</th><th>Đăng nhập bằng</th><th></th></tr></thead><tbody>
-    ${svs.map(s => `<tr><td><b>${esc(s.mssv)}</b></td><td>${esc(s.hoTen)}</td><td>${esc(fmtD(s.ngaySinh))}</td><td>${esc(s.sdt || "")}</td><td>${esc(P.showName(s.id))}</td><td><button type="button" class="btn" data-svdel="${esc(s.id)}">Xóa hồ sơ</button></td></tr>`).join("") || `<tr><td colspan="6" class="muted">Chưa có sinh viên.</td></tr>`}
+    ${svs.map(s => `<tr><td><b>${esc(s.mssv)}</b></td><td>${esc(s.hoTen)}</td><td>${esc(fmtD(s.ngaySinh))}</td><td>${esc(s.sdt || "")}</td><td>${esc(P.showName(s.id))}${s.id.endsWith("@" + P.ACCT_DOMAIN) ? "" : " <small class=\"muted\">(Google)</small>"}<span class="pw-st" data-pwst="${esc(s.id)}"></span></td><td style="white-space:nowrap"><button type="button" class="btn sm" data-svedit="${esc(s.id)}">✎ Sửa</button> ${s.id.endsWith("@" + P.ACCT_DOMAIN) ? `<button type="button" class="btn sm" data-svpw="${esc(s.id)}">Đặt lại mật khẩu</button> ` : ""}<button type="button" class="btn sm" data-svdel="${esc(s.id)}">Xóa</button></td></tr>`).join("") || `<tr><td colspan="6" class="muted">Chưa có sinh viên.</td></tr>`}
     </tbody></table></div>`);
   bindLop(lops);
   $("#lopSel").onchange = e => go("tt-lop/" + e.target.value);
   /* Danh sách chuyển sang từ trang lớp của Hồ sơ sinh viên */
   try { const pf = JSON.parse(sessionStorage.getItem("pna_sv_prefill") || "null"); if (pf && pf.lop === cur.id) { $("#svPaste").value = pf.text; sessionStorage.removeItem("pna_sv_prefill"); $("#svPaste").scrollIntoView({ block: "center" }); } } catch (e) {}
+  /* Sửa thông tin tài khoản sinh viên, đặt lại mật khẩu khi sinh viên quên */
+  P.pwResetStatus().then(rs => { const last = {}; rs.forEach(r => { if (!last[r.email]) last[r.email] = r; });
+    document.querySelectorAll("[data-pwst]").forEach(x => { const r = last[x.dataset.pwst]; if (r) x.innerHTML = `<br><small class="${r.tt === "loi" ? "err" : "muted"}">${P.pwStText(r)}</small>`; }); });
+  document.querySelectorAll("[data-svpw]").forEach(b => b.onclick = () => { const s = svs.find(x => x.id === b.dataset.svpw) || {}; P.pwResetDialog(s.id, s.hoTen, /^\d{4}-\d{2}-\d{2}$/.test(s.ngaySinh || "") ? pwFrom(s.ngaySinh) : "", () => renderLop(cur.id)); });
+  document.querySelectorAll("[data-svedit]").forEach(b => b.onclick = () => {
+    const s = svs.find(x => x.id === b.dataset.svedit); if (!s) return;
+    const dl = document.createElement("dialog"); dl.className = "dlg";
+    dl.innerHTML = `<form method="dialog" class="dlg-in"><h3>SỬA TÀI KHOẢN SINH VIÊN</h3>
+      <p class="muted">Tên đăng nhập: <b>${esc(P.showName(s.id))}</b> · Mã SV ${esc(s.mssv)}</p>
+      <div class="grid2"><label class="fld"><span>Họ và tên *</span><input id="seTen" value="${esc(s.hoTen || "")}"></label>
+      <label class="fld"><span>Ngày sinh (dd/mm/yyyy)</span><input id="seNs" value="${esc(fmtD(s.ngaySinh))}"></label>
+      <label class="fld"><span>Số điện thoại</span><input id="seSdt" value="${esc(s.sdt || "")}"></label></div>
+      ${s.id.endsWith("@" + P.ACCT_DOMAIN) ? `<label class="fld chk inline"><input type="checkbox" id="sePwOn"><span>Đặt lại mật khẩu (sinh viên quên mật khẩu)</span></label>
+      <label class="fld" id="sePwWrap" hidden><span>Mật khẩu mới</span><input id="sePw" autocomplete="off" value="${esc(/^\d{4}-\d{2}-\d{2}$/.test(s.ngaySinh || "") ? pwFrom(s.ngaySinh) : "")}"><small class="muted">Mặc định: ngày sinh ddmmyyyy. Áp dụng sau khoảng 5–15 phút.</small></label>` : `<p class="muted">Sinh viên đăng nhập bằng Google — mật khẩu do Google quản lý.</p>`}
+      <p class="err" id="seErr"></p><div class="dlg-act"><button type="button" class="btn" data-x>Hủy</button><button type="submit" class="btn primary" id="seGo">Lưu</button></div></form>`;
+    document.body.appendChild(dl); dl.showModal(); dl.addEventListener("close", () => dl.remove());
+    dl.querySelector("[data-x]").onclick = () => dl.close();
+    const on = dl.querySelector("#sePwOn"); if (on) on.onchange = () => dl.querySelector("#sePwWrap").hidden = !on.checked;
+    dl.querySelector("form").onsubmit = async e => {
+      e.preventDefault(); const err = dl.querySelector("#seErr"), btn = dl.querySelector("#seGo");
+      const hoTen = dl.querySelector("#seTen").value.trim(), nsRaw = dl.querySelector("#seNs").value.trim(), ngaySinh = parseDate(nsRaw), sdt = dl.querySelector("#seSdt").value.trim();
+      if (!hoTen) return err.textContent = "Nhập họ và tên.";
+      if (nsRaw && !ngaySinh) return err.textContent = "Ngày sinh chưa đúng dạng dd/mm/yyyy.";
+      btn.disabled = true;
+      try {
+        const at = new Date().toISOString();
+        await setDoc(doc(db, "pna_sv", s.id), { hoTen, ngaySinh, sdt, cvht: cur.cvht || [], lop: cur.id, updated: at, by: myEmail() }, { merge: true });
+        try { await setDoc(doc(db, "pna_accounts", s.id), { role: "sinh-vien", name: hoTen, updated: at }, { merge: true }); } catch (x) {}
+        if (sdt !== (s.sdt || "")) { try { await setDoc(doc(db, "pna_hoso", s.mssv), { sdt, updated: at, by: myEmail() }, { merge: true }); } catch (x) {} }
+        let msg = "Đã lưu thông tin " + hoTen + ".";
+        if (on && on.checked) { await P.requestPwReset(s.id, dl.querySelector("#sePw").value.trim(), "CVHT đặt lại"); msg += " Đã gửi yêu cầu đặt lại mật khẩu (áp dụng sau khoảng 5–15 phút)."; }
+        P.logAct("SV_EDIT", s.mssv); P.toast(msg, "ok"); dl.close(); renderLop(cur.id);
+      } catch (x) { err.textContent = "Chưa lưu được: " + x.message; btn.disabled = false; }
+    };
+  });
   document.querySelectorAll("[data-svdel]").forEach(b => b.onclick = async () => {
     const em = b.dataset.svdel;
     if (!await P.ask("Xóa hồ sơ sinh viên " + P.showName(em) + "? Sinh viên sẽ không lập được đơn mới; các đơn cũ vẫn lưu.")) return;

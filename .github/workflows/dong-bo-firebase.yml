@@ -1,6 +1,7 @@
 # Đồng bộ Firebase tự động cho PNA
 # - Đăng (Publish) firestore.rules mỗi khi tệp thay đổi
 # - Nhập các gói dữ liệu đã mã hóa trong data/inbox/*.enc vào Firestore, nhập xong thì xóa gói
+# - Áp dụng yêu cầu đặt lại mật khẩu (pna_yeucau_tk) do CVHT / quản trị gửi từ web
 # - Công bố khóa công khai data/khoa-ma-hoa.pem (sinh từ tài khoản dịch vụ) để mã hóa gói dữ liệu
 # Cần một secret: FIREBASE_SERVICE_ACCOUNT (nội dung tệp JSON khóa tài khoản dịch vụ Firebase Admin SDK)
 name: Đồng bộ Firebase
@@ -9,7 +10,7 @@ on:
     branches: [main]
     paths: ["firestore.rules", "data/inbox/**", ".github/workflows/dong-bo-firebase.yml", "tools/dongbo.mjs"]
   schedule:
-    - cron: "23 * * * *"
+    - cron: "*/5 * * * *"   # 5 phút/lần: áp dụng yêu cầu đặt lại mật khẩu, kiểm tra rules
   workflow_dispatch:
 permissions:
   contents: write
