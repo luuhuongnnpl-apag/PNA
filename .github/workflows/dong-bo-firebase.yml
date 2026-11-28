@@ -1,0 +1,47 @@
+# Đồng bộ Firebase tự động cho PNA
+# - Đăng (Publish) firestore.rules mỗi khi tệp thay đổi
+# - Nhập các gói dữ liệu đã mã hóa trong data/inbox/*.enc vào Firestore, nhập xong thì xóa gói
+# - Công bố khóa công khai data/khoa-ma-hoa.pem (sinh từ tài khoản dịch vụ) để mã hóa gói dữ liệu
+# Cần một secret: FIREBASE_SERVICE_ACCOUNT (nội dung tệp JSON khóa tài khoản dịch vụ Firebase Admin SDK)
+name: Đồng bộ Firebase
+on:
+  push:
+    branches: [main]
+    paths: ["firestore.rules", "data/inbox/**", ".github/workflows/dong-bo-firebase.yml", "tools/dongbo.mjs"]
+  schedule:
+    - cron: "23 */3 * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: dong-bo-firebase
+  cancel-in-progress: false
+jobs:
+  dong-bo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Kiểm tra khóa tài khoản dịch vụ
+        id: k
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SA" ]; then echo "ok=0" >> "$GITHUB_OUTPUT"; echo "Chưa có secret FIREBASE_SERVICE_ACCOUNT — bỏ qua."; else echo "ok=1" >> "$GITHUB_OUTPUT"; fi
+      - name: Cài firebase-admin
+        if: steps.k.outputs.ok == '1'
+        run: npm install --no-save --no-package-lock firebase-admin@12
+      - name: Đồng bộ
+        if: steps.k.outputs.ok == '1'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node tools/dongbo.mjs
+      - name: Lưu nhật ký, khóa công khai, xóa gói đã nhập
+        if: always() && steps.k.outputs.ok == '1'
+        run: |
+          git config user.name "PNA Dong bo"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A data
+          if ! git diff --cached --quiet; then git commit -m "Đồng bộ Firebase: nhật ký [skip ci]" && git pull --rebase && git push; fi
