@@ -10,6 +10,7 @@
 */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInAnonymously, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, updatePassword } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js";
+import { mauHTML, mauOptions } from "./mauvb.js?v=20261128a";
 import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, query, where, writeBatch, addDoc, Timestamp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
 
 const CFG = window.PNA_CONFIG || {};
@@ -500,11 +501,35 @@ function renderSide() {
   } else rows.push(["Tài liệu trong hệ thống", loaded.items ? listed.length : "…"], ["Tài liệu Công khai", loaded.items ? mine.length : "…"], ["Bộ sưu tập", PUBLIC_CATS.length]);
   $("#stats").innerHTML = rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join("") +
     (!g ? `<dd class="muted" style="grid-column:1/-1;text-align:left;font-weight:400;margin-top:4px">Đang xem tài liệu Công khai. Đăng nhập để xem thêm tài liệu Nội bộ, Hạn chế. <button type="button" class="linkish" data-login>Đăng nhập</button></dd>` : "");
-  const L = CFG.LINKS || {};
-  const lk = (href, icon, colors, label) => href ? `<a href="${esc(href)}" target="_blank" rel="noopener"><span class="ic">${cover(icon, colors)}</span>${esc(label)}</a>` : "";
-  $("#linkList").innerHTML = lk(L.portal, "lib", ["#7f1d1d", "#b91c1c"], "Cổng thông tin đào tạo") +
-    lk(L.drive, "cloud", ["#2f6f4f", "#58a37a"], "Google Drive") + lk(L.gmail, "mail", ["#8e2c3f", "#c4566a"], "Gmail") +
-    (isAdmin ? `<button type="button" data-go="tai-khoan"><span class="ic">${cover("key", ["#0f2945", "#2b5f8f"])}</span>Tài khoản & phân quyền</button>` : "");
+  renderLinks();
+}
+/* ---------- Ô LIÊN KẾT: quản trị viên thêm, sửa, xóa (pna_settings/links { list:[{ten, url}] }) ---------- */
+let LINKS = null;
+const LK_COL = [["#7f1d1d", "#b91c1c"], ["#2f6f4f", "#58a37a"], ["#8e2c3f", "#c4566a"], ["#0f2945", "#2b5f8f"], ["#6b4f1d", "#b8862f"]];
+function linksDefault() { const L = CFG.LINKS || {}; return [["Cổng thông tin đào tạo", L.portal], ["Google Drive", L.drive], ["Gmail", L.gmail]].filter(x => x[1]).map(([ten, url]) => ({ ten, url })); }
+function renderLinks() {
+  const box = $("#linkList"); if (!box) return;
+  if (LINKS === null) { LINKS = linksDefault(); getDoc(doc(db, "pna_settings", "links")).then(x => { if (x.exists() && Array.isArray(x.data().list)) { LINKS = x.data().list; renderLinks(); } }).catch(() => {}); }
+  box.innerHTML = LINKS.map((l, i) => `<a href="${esc(l.url)}" target="_blank" rel="noopener"><span class="ic">${cover(/drive/i.test(l.url) ? "cloud" : /mail/i.test(l.url) ? "mail" : "lib", LK_COL[i % LK_COL.length])}</span>${esc(l.ten)}</a>`).join("") +
+    (isAdmin ? `<button type="button" data-go="tai-khoan"><span class="ic">${cover("key", ["#0f2945", "#2b5f8f"])}</span>Tài khoản & phân quyền</button><button type="button" class="linkish" id="lkEdit" style="margin-top:4px">✎ Thêm, sửa, xóa liên kết</button>` : "");
+  const b = $("#lkEdit"); if (b) b.onclick = editLinks;
+}
+function editLinks() {
+  const dl = document.createElement("dialog"); dl.className = "dlg wide";
+  const row = l => `<div class="lk-row"><input data-lt placeholder="Tên hiển thị (VD: Phúc Nguyên Library)" value="${esc(l.ten || "")}"><input data-lu placeholder="https://…" value="${esc(l.url || "")}"><button type="button" class="btn sm" data-lup title="Lên">↑</button><button type="button" class="btn sm" data-ldel title="Xóa">✕</button></div>`;
+  dl.innerHTML = `<div class="dlg-in"><h3>LIÊN KẾT</h3><p class="muted">Mỗi dòng một liên kết: tên hiển thị và địa chỉ. Kéo thứ tự bằng nút ↑.</p><div id="lkRows">${LINKS.map(row).join("")}</div>
+    <button type="button" class="btn" id="lkAdd">＋ Thêm liên kết</button><p class="err" id="lkErr"></p><div class="dlg-act"><button type="button" class="btn" data-x>Hủy</button><button type="button" class="btn primary" id="lkSave">Lưu</button></div></div>`;
+  document.body.appendChild(dl); dl.showModal(); dl.addEventListener("close", () => dl.remove());
+  const rows = dl.querySelector("#lkRows");
+  dl.querySelector("[data-x]").onclick = () => dl.close();
+  dl.querySelector("#lkAdd").onclick = () => { rows.insertAdjacentHTML("beforeend", row({})); rows.lastElementChild.querySelector("input").focus(); };
+  rows.addEventListener("click", ev => { const r = ev.target.closest(".lk-row"); if (!r) return; if (ev.target.closest("[data-ldel]")) r.remove(); else if (ev.target.closest("[data-lup]") && r.previousElementSibling) r.parentNode.insertBefore(r, r.previousElementSibling); });
+  dl.querySelector("#lkSave").onclick = async () => {
+    const list = [...rows.querySelectorAll(".lk-row")].map(r => ({ ten: r.querySelector("[data-lt]").value.trim(), url: r.querySelector("[data-lu]").value.trim() })).filter(x => x.ten || x.url);
+    const bad = list.find(x => !x.ten || !/^(https?:\/\/|mailto:)/i.test(x.url)); if (bad) return dl.querySelector("#lkErr").textContent = "Mỗi liên kết cần tên và địa chỉ bắt đầu bằng https:// (" + (bad.ten || bad.url) + ").";
+    try { await setDoc(doc(db, "pna_settings", "links"), { list, updated: new Date().toISOString(), by: user && user.email || "" }); LINKS = list; logAct("LINKS_SAVE", list.length + " liên kết"); renderLinks(); dl.close(); toast("Đã lưu liên kết.", "ok"); }
+    catch (e) { dl.querySelector("#lkErr").textContent = "Chưa lưu được: " + e.message; }
+  };
 }
 function renderAuth() {
   document.body.classList.toggle("is-admin", isAdmin);
@@ -624,16 +649,17 @@ function noteCreateBoxHTML(folderId, catKey) {
   const isNoteCat = catKey === "bst-ghi-chu";
   return `<div class="note-create-box" id="noteCreateBox"${isNoteCat ? "" : " hidden"}>
     <div class="note-create-head">
-      <h3>📝 TẠO VĂN BẢN BẰNG GHI CHÚ &amp; SOẠN THẢO TRỰC TIẾP TRONG FILE</h3>
+      <h3>📝 SOẠN VĂN BẢN: BIÊN BẢN HỌP, ĐƠN, GHI CHÚ — SOẠN TRỰC TIẾP TRONG FILE</h3>
       <span class="muted">Soạn thảo trực tiếp trong file được tạo ra · Lưu lại &amp; chuyển vào file hoặc thư mục cụ thể</span>
     </div>
     <div class="note-create-row">
-      <input id="quickNoteName" type="text" placeholder="Nhập tiêu đề văn bản / ghi chú mới (VD: Dự thảo công văn, Biên bản họp, Ghi chú chuyên đề...)" autocomplete="off">
+      <input id="quickNoteName" type="text" placeholder="Tiêu đề / về việc (VD: Sinh hoạt chi đoàn tháng 12, Đơn xin phép nghỉ học…)" autocomplete="off">
       <select id="quickNoteTpl" aria-label="Mẫu văn bản">
         <option value="blank">📄 Văn bản trống</option>
         <option value="congvan">🏛 Mẫu Công văn / Hành chính</option>
         <option value="bienban">📋 Mẫu Biên bản làm việc</option>
         <option value="nghiencuu">🔬 Phiếu ghi chú nghiên cứu</option>
+        ${mauOptions(m => m.nhom !== "Ghi chép")}
       </select>
       <button type="button" data-quicknote="${esc(folderId)}">＋ Tạo file &amp; Soạn thảo ngay</button>
     </div>
@@ -823,6 +849,7 @@ let currentDocMode = "view"; // "view" | "edit"
 
 function buildNoteTemplate(tpl, title) {
   const nowStr = fmtDate(todayISO());
+  const m = mauHTML(tpl, { tieuDe: title, khoa: "Khoa Luật", hoTen: (acct && acct.name) || "" }); if (m) return m;
   const safeTitle = esc(title || "Văn bản ghi chú mới");
   if (tpl === "congvan") {
     return `<table style="width:100%;border:0;margin-bottom:14px"><tr><td style="border:0;text-align:center;width:45%;vertical-align:top"><b>ĐƠN VỊ / CƠ QUAN CHỦ QUẢN</b><br><b>TÊN ĐƠN VỊ BAN HÀNH</b><br>Số: … / …</td><td style="border:0;text-align:center;width:55%;vertical-align:top"><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br><b>Độc lập - Tự do - Hạnh phúc</b><br><i>…, ngày ${nowStr}</i></td></tr></table><h2 style="text-align:center;margin:14px 0 6px">${safeTitle.toUpperCase()}</h2><p style="text-align:center"><b>Kính gửi:</b> …………………………………………………………</p><p>1. Nội dung triển khai: …………………………………………………………………………………………</p><p>2. Đề xuất / Kiến nghị: …………………………………………………………………………………………</p>`;

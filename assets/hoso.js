@@ -9,6 +9,7 @@
    ===================================================================== */
 import { doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, collectionGroup, getDocs, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
 import { THU_TUC, KHOA_QL } from "./thutuc-data.js?v=20261128y";
+import { MAU, mauHTML, mauOptions, richEditor, cleanHTML, printHTML } from "./mauvb.js?v=20261128a";
 const KHOA_TEN = KHOA_QL.replace(/^Khoa\s+/i, "").toUpperCase();
 
 const P = window.PNA, db = P.db, esc = P.esc;
@@ -91,6 +92,34 @@ async function loadHoso(force) {
 }
 const reset = () => { LOPS = null; ALL = null; };
 
+/* ---------- Ảnh đại diện: pna_anh/{email} { data (JPEG vuông 160px), lop, mssv, at } ---------- */
+const AV = {};   // bộ nhớ đệm email → data URL ("" = không có)
+async function avGet(email) { if (!email) return ""; if (AV[email] !== undefined) return AV[email]; try { const x = await getDoc(doc(db, "pna_anh", email)); AV[email] = x.exists() ? x.data().data || "" : ""; } catch (e) { AV[email] = ""; } return AV[email]; }
+async function avLop(lop) { try { (await getDocs(query(collection(db, "pna_anh"), where("lop", "==", lop)))).forEach(d => AV[d.id] = d.data().data || ""); } catch (e) {} }
+const avImg = (email, name, cls) => AV[email] ? `<img class="${cls || "av-s"}" src="${AV[email]}" alt="">` : `<span class="${cls || "av-s"} av-ph">${esc(String(name || "?").trim().split(/\s+/).pop().slice(0, 1))}</span>`;
+function avPick(email, meta, done) {
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
+  inp.onchange = async () => {
+    const f = inp.files[0]; if (!f) return; const url = URL.createObjectURL(f);
+    try {
+      const im = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = url; });
+      const z = Math.min(im.width, im.height), c = document.createElement("canvas"); c.width = c.height = 160;
+      c.getContext("2d").drawImage(im, (im.width - z) / 2, (im.height - z) / 3, z, z, 0, 0, 160, 160);
+      const data = c.toDataURL("image/jpeg", 0.82);
+      await setDoc(doc(db, "pna_anh", email), { data, lop: meta.lop || "", mssv: meta.mssv || "", at: nowISO(), by: myEmail() });
+      AV[email] = data; P.toast("Đã cập nhật ảnh đại diện.", "ok"); done && done(); avHeader();
+    } catch (e) { P.toast("Chưa cập nhật được ảnh: " + e.message, "err"); } finally { URL.revokeObjectURL(url); }
+  };
+  inp.click();
+}
+/* Ảnh của người đăng nhập ở thanh trên cùng; bấm để đổi */
+async function avHeader() {
+  const w = $("#whoami"); if (!w) return; const em = myEmail(); w.querySelector(".who-av") && w.querySelector(".who-av").remove(); if (!em) return;
+  const d = await avGet(em), el = document.createElement(d ? "img" : "span"); el.className = "who-av" + (d ? "" : " av-ph"); if (d) el.src = d; else el.textContent = "📷";
+  el.title = "Ảnh đại diện — bấm để đổi"; el.onclick = () => avPick(em, { lop: (ME && ME.sv && ME.sv.lop) || "", mssv: (ME && ME.sv && ME.sv.mssv) || "" });
+  w.prepend(el);
+}
+
 /* ---------- Khung trang ---------- */
 function page(title, body, crumbs) {
   $("#main").innerHTML = `<section class="box hs-page"><h2 class="box-title">${title}</h2>${crumbs ? `<div class="crumbs"><a data-home>Trang chủ</a>${crumbs.map(([h, t]) => `<span class="sep">/</span>${h ? `<a href="#${esc(h)}">${esc(t)}</a>` : `<span>${esc(t)}</span>`}`).join("")}</div>` : ""}${body}</section>`;
@@ -167,6 +196,7 @@ async function renderLop(id) {
       <label class="fld" style="max-width:260px"><span>Học kỳ</span><select id="drlKy">${kyList(l.khoa).map(k => `<option value="${k}"${k === kyNow() ? " selected" : ""}>${kyName(k)}</option>`).join("")}</select></label>
       <textarea id="drlPaste" rows="5" class="fld-sel" placeholder="2505TTRA001	85	Tốt"></textarea>
       <div class="dlg-act" style="justify-content:flex-start"><button type="button" class="btn primary" id="drlGo">Cập nhật kết quả rèn luyện</button></div><p class="err" id="drlErr"></p></details>` : "";
+  await avLop(id);
   /* Hoạt động phong trào của lớp (đã xác nhận / chờ) */
   const hd = {};
   try {
@@ -183,7 +213,7 @@ async function renderLop(id) {
     return { k, hk, g: avg(g), ng: g.length, d: avg(dr.map(x => +x.diem)), nd: dr.length, c, hl };
   });
   const rows = svs.map((s, i) => { const d = kLast && (s.drl || {})[kLast], th = TH[s.mssv], h = hd[s.mssv] || { ok: 0, cho: 0 }; return `<tr class="tt-row" data-go="sv/${esc(s.mssv)}" data-st="${esc(s.trangThai || "dang-hoc")}" data-q="${esc((s.mssv + " " + s.hoTen + " " + (s.sdt || "")).toLowerCase())}">
-    <td class="c">${i + 1}</td><td><b>${esc(s.mssv)}</b></td><td>${esc(s.hoTen)}${s.chucVu ? `<br><small class="hs-cs">${esc(s.chucVu)}</small>` : ""}</td><td>${esc(fmtD(s.ngaySinh))}</td><td>${esc(s.sdt || "")}</td>
+    <td class="c">${i + 1}</td><td><b>${esc(s.mssv)}</b></td><td class="av-cell">${avImg(s.email, s.hoTen)}<span>${esc(s.hoTen)}${s.chucVu ? `<br><small class="hs-cs">${esc(s.chucVu)}</small>` : ""}</span></td><td>${esc(fmtD(s.ngaySinh))}</td><td>${esc(s.sdt || "")}</td>
     <td>${chip(s.trangThai)}</td><td class="c">${d ? (d.diem ?? "—") : ""}</td><td>${d ? xlChip(d.xepLoai) : ""}</td><td class="c">${s.email ? "✓" : ""}</td>${lopCt ? `<td class="c"><b>${th && th.g4 != null ? th.g4.toFixed(2) : "—"}</b>${th && th.g4 != null ? `<br><small>${esc(hocLuc(th.g4))}</small>` : ""}</td>` : ""}<td class="c">${h.ok ? `<b>${h.ok}</b>` : "—"}${h.cho ? `<br><small class="muted">${h.cho} chờ xác nhận</small>` : ""}</td>${lopCt ? (() => { const t = tienDo(lopCt, s.hocTap); return `<td class="c">${t.qua}/${t.tong}${t.chua ? `<br><small style="color:#b3261e">${t.chua} HP chưa qua</small>` : ""}</td>`; })() : ""}</tr>`; }).join("");
   const hasAcc = svs.filter(s => s.email).length;
   page(`Lớp ${esc(l.id)}${l.ten ? " — " + esc(l.ten) : ""}`, `
@@ -198,7 +228,7 @@ async function renderLop(id) {
           <td><small>${XL.filter(x => r.c[x]).map(x => `<b style="color:${XL_C[x]}">${x} ${r.c[x]}</b>`).join(" · ") || "—"}</small></td></tr>`).join("")}</tbody></table></div>` : `<p class="muted">Chưa có học kỳ.</p>`}</div>
     </div>
     <div class="page-tools">${edit ? `<button type="button" id="lopAcc">Cấp tài khoản cho sinh viên chưa có (${svs.length - hasAcc})</button>` : ""}<button type="button" id="lopCsv">⤓ Xuất danh sách (Excel)</button></div>
-    <p><a class="pill" href="#sv-bbh/${esc(id)}">📋 Biên bản họp lớp đánh giá rèn luyện (Phụ lục 02)</a></p>
+    <p><a class="pill" href="#sv-bb/${esc(id)}">📋 Biên bản họp (lớp, chi đoàn, chi hội, đánh giá rèn luyện)</a></p>
     <div class="hs-filter"><input type="search" id="lopQ" placeholder="Lọc theo mã, tên, số điện thoại…"><select id="lopSt"><option value="">Mọi trạng thái</option>${Object.keys(TT).map(k => `<option value="${k}">${TT[k][0]}</option>`).join("")}</select></div>
     <div class="tbl-wrap"><table class="adm-table ftbl hs-tbl"><thead><tr><th class="c">STT</th><th>Mã SV</th><th>Họ và tên</th><th>Ngày sinh</th><th>Điện thoại</th><th>Trạng thái</th><th class="c">ĐRL</th><th>Xếp loại${kLast ? `<br><small>${esc(kyName(kLast))}</small>` : ""}</th><th class="c">Tài khoản</th>${lopCt ? `<th class="c">TBC tích lũy<br><small>(thang 4)</small></th>` : ""}<th class="c">Hoạt động<br><small>đã xác nhận</small></th>${lopCt ? `<th class="c">TC đã qua</th>` : ""}</tr></thead><tbody>${rows || `<tr><td colspan="12" class="muted">Chưa có sinh viên.</td></tr>`}</tbody></table></div>`,
     [["sv", "Hồ sơ sinh viên"], [null, l.id]]);
@@ -252,7 +282,8 @@ function csv(name, rows) {
    Mục: HỌC TẬP (bảng tổng + theo học kỳ, nối cùng dữ liệu) · RÈN LUYỆN (phiếu theo TT 40/2026/TT-BGDĐT) ·
    PHONG TRÀO (sinh viên kê khai, ban cán sự / CVHT xác nhận) · THỦ TỤC – DỊCH VỤ CÔNG (đơn đã gửi, kết quả).
    Điểm: Quy chế đào tạo đại học của Học viện (QĐ 2567-QĐ/HVHCQTC ngày 09/3/2026), Điều 10, 11. */
-const TABS = [["hoc-tap", "HỌC TẬP", "📘"], ["ren-luyen", "RÈN LUYỆN", "🏅"], ["phong-trao", "PHONG TRÀO", "🎯"], ["thu-tuc", "THỦ TỤC – DỊCH VỤ CÔNG", "📄"]];
+const TABS = [["hoc-tap", "HỌC TẬP", "📘"], ["ren-luyen", "RÈN LUYỆN", "🏅"], ["phong-trao", "PHONG TRÀO", "🎯"], ["thu-tuc", "THỦ TỤC – DỊCH VỤ CÔNG", "📄"], ["so-tay", "SỔ TAY CỦA TÔI", "📒"]];
+const tabsOf = own => TABS.filter(t => t[0] !== "so-tay" || own);
 const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
 const r1 = x => Math.round(x * 10 + 1e-9) / 10, r2 = x => Math.round(x * 100 + 1e-9) / 100;
 const numOf = v => (v === "" || v == null || isNaN(+v)) ? null : +v;
@@ -342,11 +373,12 @@ async function renderSv(mssv, tab) {
     edit ? getDocs(collection(db, "pna_hoso", mssv, "noibo")).then(q => q.forEach(x => notes.push({ id: x.id, ...x.data() }))).catch(() => {}) : null,
     loadDons(s, own).then(x => dons = x).catch(() => {}),
     getDocs(collection(db, "pna_hoso", mssv, "hoatdong")).then(q => q.forEach(x => acts.push({ id: x.id, ...x.data() }))).catch(() => {}),
+    avGet(s.email),
     getDocs(collection(db, "pna_hoso", mssv, "minhchung")).then(q => q.forEach(x => mc.push({ id: x.id, ...x.data() }))).catch(() => {})
   ]);
   const ctId = s.ctdt || (lop && lop.ctdt);
   if (ctId) { try { const x = await getDoc(doc(db, "pna_ctdt", ctId)); if (x.exists()) ct = { id: x.id, ...x.data() }; } catch (e) {} }
-  tab = TABS.some(t => t[0] === tab) ? tab : "hoc-tap";
+  tab = tabsOf(own).some(t => t[0] === tab) ? tab : "hoc-tap";
   const V = { s, lop, ct, notes, dons, acts, mc, own, edit, self, tab, hk: null, view: "tong" };
   fullPage(true);
   drawSv(V);
@@ -358,10 +390,10 @@ function drawSv(V) {
   const info = [["Mã sinh viên", s.mssv], ["Ngày sinh", fmtD(s.ngaySinh)], ["Lớp", s.lop + (lop && lop.ten ? " — " + lop.ten : "")], ["Ngành", s.nganh], ["Khóa", s.khoa ? s.khoa + (namThu(s.khoa) ? ` (năm thứ ${namThu(s.khoa)})` : "") : ""], ["Hệ đào tạo", s.he],
     ["Chức vụ", s.chucVu ? s.chucVu + (s.chucVuNam ? " (" + s.chucVuNam.replace("-", "–") + ")" : "") : ""], ["Điện thoại", s.sdt], ["Email liên hệ", s.emailLienHe], ["Quê quán", s.queQuan], ["Tài khoản", s.email ? P.showName(s.email) : "Chưa cấp"], ["Cố vấn học tập", (s.cvht || []).map(P.showName).join(", ") || "Chưa gán"]].filter(r => r[1]);
   const sk = (s.suKien || []).slice().sort((a, b) => String(b.ngay || b.namHoc || "").localeCompare(String(a.ngay || a.namHoc || "")));
-  const left = `<div class="hs-card"><div class="hs-av">${esc((s.ten || s.hoTen || "?").slice(0, 1))}</div><div class="hs-name">${esc(s.hoTen)}</div><div>${chip(s.trangThai)}</div>
+  const left = `<div class="hs-card"><div class="hs-av">${AV[s.email] ? `<img src="${AV[s.email]}" alt="">` : esc((s.ten || s.hoTen || "?").slice(0, 1))}</div>${s.email && (V.own || edit) ? `<button type="button" class="linkish" id="avChg">📷 ${AV[s.email] ? "Đổi" : "Thêm"} ảnh đại diện</button>` : ""}<div class="hs-name">${esc(s.hoTen)}</div><div>${chip(s.trangThai)}</div>
       <dl class="hs-dl">${info.map(([a, b]) => `<dt>${a}</dt><dd>${esc(b)}</dd>`).join("")}</dl>
       ${edit ? `<div class="hs-act"><button type="button" class="btn sm" id="svEdit">✎ Sửa thông tin</button><button type="button" class="btn sm primary" id="svEv">＋ Sự kiện</button></div>` : ""}</div>
-    <nav class="hs-tabs">${TABS.map(([k, n, ic]) => `<a href="#sv/${esc(s.mssv)}/${k}" class="${V.tab === k ? "on" : ""}"><span>${ic}</span>${n}</a>`).join("")}</nav>`;
+    <nav class="hs-tabs">${tabsOf(V.own).map(([k, n, ic]) => `<a href="#sv/${esc(s.mssv)}/${k}" class="${V.tab === k ? "on" : ""}"><span>${ic}</span>${n}</a>`).join("")}</nav>`;
   const yrs = []; const ks = kyList(s.khoa); for (let i = 0; i < ks.length; i += 2) yrs.push([ks[i], ks[i + 1]]);
   const mini = yrs.map(([a, b], i) => `<div class="hs-my"><b>Năm ${i + 1}</b>${[a, b].map(k => { const hk = hkOfKy(s.khoa, k), H = th && th.hk[hk], d = (s.drl || {})[k]; return `<span class="${k === kyNow() ? "now" : ""}" title="${esc(kyName(k))}">HK${ROMAN[hk]}: ${H && H.g4 != null ? H.g4.toFixed(2) : "—"} · ĐRL ${d && d.diem != null ? d.diem : "—"}</span>`; }).join("")}</div>`).join("");
   const right = `<div class="sbox"><h3 class="sbox-title">TÓM TẮT</h3>
@@ -374,7 +406,7 @@ function drawSv(V) {
     ${edit ? `<div class="sbox hs-noibo"><h3 class="sbox-title">GHI CHÚ CỦA CVHT <small class="muted">(chỉ cán bộ xem)</small></h3>
       ${V.notes.sort((a, b) => String(b.at).localeCompare(String(a.at))).map(n => `<div class="hs-note"><small class="muted">${esc(fmtD(String(n.at).slice(0, 10)))} · ${esc(P.showName(n.by || ""))}</small><p>${esc(n.noiDung)}</p><button type="button" class="linkish" data-notedel="${esc(n.id)}">Xóa</button></div>`).join("") || `<p class="muted">Chưa có ghi chú.</p>`}
       <textarea id="noteIn" rows="2" class="fld-sel" placeholder="Tình hình học tập, gia đình, tư vấn đã thực hiện…"></textarea><button type="button" class="btn sm" id="noteAdd" style="margin-top:6px">Lưu ghi chú</button></div>` : ""}`;
-  const mid = V.tab === "ren-luyen" ? tabRL(V, th) : V.tab === "phong-trao" ? tabPT(V) : V.tab === "thu-tuc" ? tabTT(V) : tabHT(V, th);
+  const mid = V.tab === "so-tay" ? tabST(V) : V.tab === "ren-luyen" ? tabRL(V, th) : V.tab === "phong-trao" ? tabPT(V) : V.tab === "thu-tuc" ? tabTT(V) : tabHT(V, th);
   page(esc(s.hoTen), `<div class="hs3"><aside class="hs3-l">${left}</aside><section class="hs3-m">${mid}</section><aside class="hs3-r">${right}</aside></div>`,
     isStaff() ? [["sv", "Hồ sơ sinh viên"], ["sv/lop/" + s.lop, s.lop], [null, s.hoTen]] : null);
   bindSv(V);
@@ -619,6 +651,47 @@ function inPhieuRL(V) {
     <div class="sig" style="grid-template-columns:1fr 1fr"><div><b>T/M LỚP<br>LỚP TRƯỞNG</b><br><br><br><br></div><div><i>Hà Nội, ngày ..... tháng ..... năm ${new Date().getFullYear()}</i><br><b>SINH VIÊN</b><br><br><br><br>${esc(s.hoTen)}</div></div>`);
 }
 
+/* ---- SỔ TAY CỦA TÔI: không gian ghi chép riêng của sinh viên (chỉ chính chủ xem) — pna_hoso/{mssv}/sotay/{id} ---- */
+function tabST(V) {
+  if (!V.st) return `<div class="sbox"><h3 class="sbox-title">SỔ TAY CỦA TÔI</h3><p class="muted">Đang tải…</p></div>`;
+  const cur = V.stCur && V.st.find(n => n.id === V.stCur);
+  const list = V.st.slice().sort((a, b) => String(b.updated || b.at).localeCompare(String(a.updated || a.at)));
+  const q = (V.stQ || "").toLowerCase(), shown = q ? list.filter(n => (n.tieuDe + " " + (n.nhan || "") + " " + (n.text || "")).toLowerCase().includes(q)) : list;
+  return `<div class="sbox"><h3 class="sbox-title">SỔ TAY CỦA TÔI</h3>
+    <p class="muted hs-sm">Không gian ghi chép riêng của bạn — chỉ bạn xem được (cố vấn học tập, ban cán sự không xem). Ghi bài, kế hoạch học tập, soạn sẵn đơn, bản tường trình… rồi in hoặc lưu PDF.</p>
+    <div class="st-wrap"><aside class="st-list">
+      <div class="st-new"><select id="stMau" class="fld-sel"><option value="">— Trang trống —</option>${mauOptions(m => m.nhom !== "Biên bản họp")}</select><button type="button" class="btn primary" id="stAdd">＋ Trang mới</button></div>
+      <input type="search" id="stQ" class="fld-sel" placeholder="Tìm trong sổ tay…" value="${esc(V.stQ || "")}">
+      ${shown.map(n => `<a href="#" class="st-item${n.id === V.stCur ? " on" : ""}" data-stopen="${esc(n.id)}"><b>${esc(n.tieuDe || "(không tiêu đề)")}</b><small>${esc(fmtD(String(n.updated || n.at).slice(0, 10)))}${n.nhan ? " · " + esc(n.nhan) : ""}</small></a>`).join("") || `<p class="muted">Chưa có trang nào.</p>`}
+    </aside><section class="st-doc">${cur ? `<div class="grid2"><label class="fld"><span>Tiêu đề</span><input id="stTen" value="${esc(cur.tieuDe || "")}"></label><label class="fld"><span>Nhãn (cách nhau dấu phẩy)</span><input id="stNhan" value="${esc(cur.nhan || "")}" placeholder="học phần, đơn, kế hoạch…"></label></div>
+      <div id="stEd"></div><div class="dlg-act" style="justify-content:flex-start"><button type="button" class="btn primary" id="stSave">Lưu</button><button type="button" class="btn" id="stIn">🖨 In / lưu PDF</button><span style="flex:1"></span><button type="button" class="btn danger" id="stDel">Xóa trang</button></div><p class="muted hs-sm" id="stMsg">${cur.updated ? "Lưu lần cuối " + esc(fmtD(String(cur.updated).slice(0, 10))) + " " + esc(String(cur.updated).slice(11, 16)) : ""}</p>`
+      : `<p class="muted">Chọn một trang ở bên trái hoặc tạo trang mới.</p>`}</section></div></div>`;
+}
+async function bindST(V, rerender) {
+  const { s } = V, col = () => collection(db, "pna_hoso", s.mssv, "sotay");
+  if (!V.st) { V.st = []; try { (await getDocs(col())).forEach(d => V.st.push({ id: d.id, ...d.data() })); } catch (e) { P.toast("Không tải được sổ tay: " + e.message, "err"); } return rerender(); }
+  const q = $("#stQ"); if (q) q.oninput = () => { V.stQ = q.value; const pos = q.selectionStart; rerender(); const n = $("#stQ"); n.focus(); n.setSelectionRange(pos, pos); };
+  document.querySelectorAll("[data-stopen]").forEach(a => a.onclick = ev => { ev.preventDefault(); V.stCur = a.dataset.stopen; rerender(); });
+  $("#stAdd").onclick = async () => {
+    const mau = $("#stMau").value, m = MAU.find(x => x.id === mau), now = nowISO();
+    const ten = m ? m.ten : "Ghi chép " + fmtD(now.slice(0, 10));
+    const html = mau ? mauHTML(mau, { tieuDe: "", lop: s.lop, khoa: KHOA_QL, hoTen: s.hoTen, mssv: s.mssv, ngaySinh: fmtD(s.ngaySinh), sdt: s.sdt || "" }) : "<p></p>";
+    try { const r = await addDoc(col(), { tieuDe: ten, nhan: m ? m.nhom : "", html, text: "", at: now, updated: now }); V.st.push({ id: r.id, tieuDe: ten, nhan: m ? m.nhom : "", html, at: now, updated: now }); V.stCur = r.id; rerender(); }
+    catch (e) { P.toast("Chưa tạo được: " + e.message, "err"); }
+  };
+  const cur = V.stCur && V.st.find(n => n.id === V.stCur); if (!cur) return;
+  const ed = richEditor($("#stEd"), cur.html || "");
+  const saveNow = async quiet => {
+    const html = cleanHTML(ed.get()), tieuDe = $("#stTen").value.trim() || "(không tiêu đề)", nhan = $("#stNhan").value.trim(), text = ed.body.innerText.replace(/\s+/g, " ").slice(0, 400), now = nowISO();
+    try { await setDoc(doc(col(), cur.id), { tieuDe, nhan, html, text, updated: now }, { merge: true }); Object.assign(cur, { tieuDe, nhan, html, text, updated: now }); $("#stMsg").textContent = "Đã lưu lúc " + now.slice(11, 16) + " (giờ UTC)"; if (!quiet) P.toast("Đã lưu.", "ok"); }
+    catch (e) { P.toast("Chưa lưu được: " + e.message, "err"); }
+  };
+  $("#stSave").onclick = () => saveNow(false);
+  let tmr = null; ed.body.addEventListener("input", () => { clearTimeout(tmr); tmr = setTimeout(() => saveNow(true), 4000); });
+  $("#stIn").onclick = () => { if (!printHTML(cur.tieuDe, cleanHTML(ed.get()))) P.toast("Trình duyệt chặn cửa sổ in.", "err"); };
+  $("#stDel").onclick = async () => { if (!await P.ask("Xóa trang “" + cur.tieuDe + "”? Không khôi phục được.")) return; try { await deleteDoc(doc(col(), cur.id)); V.st = V.st.filter(n => n.id !== cur.id); V.stCur = null; rerender(); } catch (e) { P.toast(e.message, "err"); } };
+}
+
 /* ---- PHONG TRÀO ---- */
 function tabPT(V) {
   const { s, own, edit, acts } = V;
@@ -657,6 +730,8 @@ async function bindSv(V) {
   const rerender = () => drawSv(V);
   const saveDoc = async (patch, msg) => { await setDoc(doc(db, "pna_hoso", s.mssv), { ...patch, updated: nowISO(), by: myEmail() }, { merge: true }); P.logAct("HOSO", s.mssv + " · " + msg); ALL = null; };
   const save = async (patch, msg) => { await saveDoc(patch, msg); Object.assign(s, patch); P.toast("Đã lưu.", "ok"); rerender(); };
+  if ($("#avChg")) $("#avChg").onclick = () => avPick(s.email, { lop: s.lop, mssv: s.mssv }, rerender);
+  if (V.tab === "so-tay" && own) return bindST(V, rerender);
   document.querySelectorAll("[data-htview]").forEach(b => b.onclick = () => { V.view = b.dataset.htview; rerender(); });
   document.querySelectorAll("[data-hk]").forEach(b => b.onclick = () => { V.hk = +b.dataset.hk; rerender(); });
   document.querySelectorAll("[data-ky]").forEach(b => b.onclick = () => { V.ky = b.dataset.ky; rerender(); });
@@ -982,7 +1057,7 @@ async function renderBox() {
   const lops = isStaff() ? (ME.lops || []) : [];
   box.innerHTML = `<h3 class="sbox-title">HỒ SƠ SINH VIÊN</h3>
     ${ME.sv && !isStaff() ? `<p class="muted" style="margin:-4px 0 10px">Hành trình học tập, rèn luyện, đơn đã gửi.</p><button type="button" class="sbtn primary" data-go="sv/${esc(ME.sv.mssv)}">Hồ sơ của tôi</button>
-      ${bq(ME.sv.lop, "hs") ? `<button type="button" class="sbtn" data-go="sv/lop/${esc(ME.sv.lop)}">Lớp ${esc(ME.sv.lop)} (ban quản trị)</button>` : ""}${bq(ME.sv.lop, "bbh") ? `<button type="button" class="sbtn" data-go="sv-bbh/${esc(ME.sv.lop)}">Biên bản họp lớp</button>` : ""}` : `
+      ${bq(ME.sv.lop, "hs") ? `<button type="button" class="sbtn" data-go="sv/lop/${esc(ME.sv.lop)}">Lớp ${esc(ME.sv.lop)} (ban quản trị)</button>` : ""}${bq(ME.sv.lop, "bbh") ? `<button type="button" class="sbtn" data-go="sv-bb/${esc(ME.sv.lop)}">Biên bản họp (lớp, chi đoàn, chi hội)</button>` : ""}` : `
     <p class="muted" style="margin:-4px 0 10px">Quản lý sinh viên theo vòng đời: lớp, CTĐT, rèn luyện, sự kiện, thủ tục.</p>
     ${lops.length ? `<div class="tt-links">${lops.sort((a, b) => a.id.localeCompare(b.id)).map(l => `<a href="#sv/lop/${esc(l.id)}"><span class="tt-dot"></span>Lớp ${esc(l.id)}${l.ten ? " — " + esc(l.ten) : ""}</a>`).join("")}</div>` : ""}
     <button type="button" class="sbtn${lops.length ? "" : " primary"}" data-go="sv" style="margin-top:8px">${seeAll() ? "Tất cả lớp – tìm sinh viên" : "Danh sách lớp"}</button>
@@ -1134,10 +1209,73 @@ async function renderBBH(lopId, ky) {
   };
 }
 
+/* ---------- BIÊN BẢN HỌP của lớp, chi đoàn, chi hội (ngoài biên bản đánh giá rèn luyện) ----------
+   pna_bienban/{id}: { lop, mau, loai, tieuDe, ngay, html, tt nhap|trinh|tra-lai|da-xn, by, byTen, at, updated, cv{email, ten, sig, at}, traLai }
+   Ban quản trị lớp (quyền bbh) lập, soạn theo mẫu, trình CVHT; CVHT xác nhận (ký) hoặc trả lại. In, lưu PDF. */
+const BB_TT = { nhap: ["Bản nháp", "#92400e", "#fef3c7"], trinh: ["Đã trình CVHT", "#1e40af", "#e0e9fb"], "tra-lai": ["CVHT trả lại", "#b3261e", "#fbe6e4"], "da-xn": ["CVHT đã xác nhận", "#1b6e3a", "#e3f4e8"] };
+async function renderBB(lopId, bid) {
+  await loadMe();
+  let l = null; try { const x = await getDoc(doc(db, "pna_lop", lopId)); if (x.exists()) l = { id: x.id, ...x.data() }; } catch (e) {}
+  if (!l) return page("Biên bản họp", `<p class="empty">Không tìm thấy lớp ${esc(lopId)}.</p>`);
+  const cv = isAdmin() || (l.cvht || []).includes(myEmail()), bqtOk = cv || bq(lopId, "bbh");
+  if (!bqtOk) return page("Biên bản họp", `<p class="empty">Chỉ cố vấn học tập và ban quản trị lớp ${esc(lopId)} (ban cán sự, BCH chi đoàn, chi hội được giao quyền) dùng chức năng này.</p>`);
+  const crumbs = cv ? [["sv", "Hồ sơ sinh viên"], ["sv/lop/" + lopId, lopId], [null, "Biên bản họp"]] : null;
+  const chip2 = t => { const c = BB_TT[t] || BB_TT.nhap; return `<span class="hs-chip" style="color:${c[1]};background:${c[2]}">${c[0]}</span>`; };
+  if (!bid) {
+    const list = []; try { (await getDocs(query(collection(db, "pna_bienban"), where("lop", "==", lopId)))).forEach(d => list.push({ id: d.id, ...d.data() })); } catch (e) { P.toast("Không tải được danh sách biên bản: " + e.message, "err"); }
+    list.sort((a, b) => String(b.ngay || b.at).localeCompare(String(a.ngay || a.at)));
+    const ks = kyList(l.khoa).filter(k => k <= kyNow());
+    page(`Biên bản họp — lớp ${esc(lopId)}`, `
+      <div class="sbox"><h3 class="sbox-title">LẬP BIÊN BẢN MỚI</h3><div class="grid2">
+        <label class="fld"><span>Loại biên bản</span><select id="bbMau" class="fld-sel">${mauOptions(m => m.nhom === "Biên bản họp")}<option value="drl">Biên bản họp lớp đánh giá kết quả rèn luyện (Phụ lục 02)</option></select></label>
+        <label class="fld"><span>Về việc</span><input id="bbVv" placeholder="Ví dụ: Sinh hoạt lớp tháng 12/2026; Đại hội chi đoàn…"></label>
+        <label class="fld"><span>Ngày họp</span><input id="bbNgay" type="date" value="${new Date().toISOString().slice(0, 10)}"></label>
+        <label class="fld"><span>Tên chi đoàn / chi hội (nếu khác mã lớp)</span><input id="bbCd" placeholder="${esc(lopId)}"></label></div>
+        <div class="dlg-act" style="justify-content:flex-start"><button type="button" class="btn primary" id="bbNew">＋ Tạo biên bản theo mẫu</button></div></div>
+      <div class="sbox"><h3 class="sbox-title">BIÊN BẢN HỌP LỚP ĐÁNH GIÁ KẾT QUẢ RÈN LUYỆN (PHỤ LỤC 02)</h3><div class="hs-kysel">${ks.map(k => `<a href="#sv-bbh/${esc(lopId)}/${k}">${esc(kyName(k))}</a>`).join("")}</div></div>
+      <div class="sbox"><h3 class="sbox-title">CÁC BIÊN BẢN ĐÃ LẬP (${list.length})</h3>${list.length ? `<div class="tbl-wrap"><table class="adm-table"><thead><tr><th>Ngày họp</th><th>Loại</th><th>Về việc</th><th>Người lập</th><th>Trạng thái</th></tr></thead><tbody>
+        ${list.map(b => `<tr class="tt-row" data-go="sv-bb/${esc(lopId)}/${esc(b.id)}"><td>${esc(fmtD(b.ngay))}</td><td>${esc(b.loai || "")}</td><td><b>${esc(b.tieuDe || "")}</b></td><td>${esc(b.byTen || P.showName(b.by || ""))}</td><td>${chip2(b.tt)}</td></tr>`).join("")}</tbody></table></div>` : `<p class="muted">Chưa có biên bản.</p>`}</div>`, crumbs);
+    $("#bbNew").onclick = async () => {
+      const mau = $("#bbMau").value; if (mau === "drl") return P.go("sv-bbh/" + lopId);
+      const m = MAU.find(x => x.id === mau), vv = $("#bbVv").value.trim(), ngay = $("#bbNgay").value; if (!vv) return P.toast("Nhập nội dung “Về việc”.", "err");
+      const d = ngay ? new Date(ngay + "T12:00:00") : new Date(), now = nowISO();
+      const html = mauHTML(mau, { tieuDe: vv, lop: lopId, khoa: KHOA_QL, chiDoan: $("#bbCd").value.trim() || lopId, ngay: d });
+      try { const r = await addDoc(collection(db, "pna_bienban"), { lop: lopId, mau, loai: m ? m.ten.replace(/^Biên bản /, "") : "", tieuDe: vv, ngay, html, tt: "nhap", by: myEmail(), byTen: (ME.sv && ME.sv.hoTen) || (P.acct && P.acct.name) || myEmail(), at: now, updated: now });
+        P.logAct("BB_NEW", lopId + " · " + vv); P.go("sv-bb/" + lopId + "/" + r.id); } catch (e) { P.toast("Chưa tạo được: " + e.message, "err"); }
+    };
+    return;
+  }
+  let B = null; try { const x = await getDoc(doc(db, "pna_bienban", bid)); if (x.exists()) B = { id: x.id, ...x.data() }; } catch (e) {}
+  if (!B || B.lop !== lopId) return page("Biên bản họp", `<p class="empty">Không tìm thấy biên bản.</p>`, crumbs);
+  const editable = cv ? B.tt !== "da-xn" : ["nhap", "tra-lai"].includes(B.tt);
+  page(esc(B.tieuDe || "Biên bản họp"), `
+    <div class="hs-hksum"><span>${esc(B.loai || "")}</span><span>Ngày họp: <b>${esc(fmtD(B.ngay))}</b></span><span>Người lập: ${esc(B.byTen || "")}</span><span>${chip2(B.tt)}</span>${B.traLai ? `<span class="hs-warn">CVHT trả lại: ${esc(B.traLai)}</span>` : ""}</div>
+    ${editable ? `<div id="bbEd" class="bb-ed"></div>` : `<div class="bb-view">${B.html || ""}</div>`}
+    ${B.cv && B.cv.sig ? `<p class="hs-sm"><b>Cố vấn học tập xác nhận:</b> ${esc(B.cv.ten || "")} · ${esc(fmtD(String(B.cv.at).slice(0, 10)))}<br><img src="${B.cv.sig}" alt="" style="max-height:60px"></p>` : ""}
+    <div class="dlg-act" style="justify-content:flex-start;flex-wrap:wrap">
+      ${editable ? `<button type="button" class="btn" id="bbLuu">Lưu</button>` : ""}
+      ${!cv && editable ? `<button type="button" class="btn primary" id="bbTr">Trình cố vấn học tập</button>` : ""}
+      ${cv && B.tt !== "da-xn" ? `${B.tt === "trinh" ? `<button type="button" class="btn" id="bbTl">Trả lại</button>` : ""}<button type="button" class="btn primary" id="bbXn">Ký xác nhận</button>` : ""}
+      ${cv && B.tt === "da-xn" ? `<button type="button" class="btn" id="bbMo2">Mở lại để sửa</button>` : ""}
+      <button type="button" class="btn" id="bbPr">🖨 In / lưu PDF</button><span style="flex:1"></span>
+      ${cv || (B.by === myEmail() && B.tt === "nhap") ? `<button type="button" class="btn danger" id="bbXoa">Xóa</button>` : ""}</div>`, crumbs ? [...crumbs.slice(0, 2), ["sv-bb/" + lopId, "Biên bản họp"], [null, B.tieuDe || ""]] : null);
+  const ed = editable ? richEditor($("#bbEd"), B.html || "") : null;
+  const ref = doc(db, "pna_bienban", bid), html = () => ed ? cleanHTML(ed.get()) : B.html;
+  const upd = async (patch, msg) => { await setDoc(ref, { ...patch, updated: nowISO() }, { merge: true }); P.logAct("BB", bid + " · " + msg); };
+  if ($("#bbLuu")) $("#bbLuu").onclick = async () => { try { await upd({ html: html(), ...(cv ? {} : { tt: "nhap" }) }, "lưu"); P.toast("Đã lưu.", "ok"); } catch (e) { P.toast("Chưa lưu được: " + e.message, "err"); } };
+  if ($("#bbTr")) $("#bbTr").onclick = async () => { if (!await P.ask("Trình biên bản này cho cố vấn học tập xác nhận?")) return; try { await upd({ html: html(), tt: "trinh", traLai: "" }, "trình"); renderBB(lopId, bid); } catch (e) { P.toast(e.message, "err"); } };
+  if ($("#bbTl")) $("#bbTl").onclick = async () => { const r = await P.ask("Lý do trả lại:", { title: "TRẢ LẠI BIÊN BẢN", input: "Lý do", ok: "Trả lại" }); if (r === null || r === false) return; try { await upd({ tt: "tra-lai", traLai: String(r).trim() }, "trả lại"); renderBB(lopId, bid); } catch (e) { P.toast(e.message, "err"); } };
+  if ($("#bbXn")) $("#bbXn").onclick = async () => { const sg = await signDialog("CỐ VẤN HỌC TẬP KÝ XÁC NHẬN BIÊN BẢN"); if (!sg) return; try { await upd({ html: html(), tt: "da-xn", traLai: "", cv: { email: myEmail(), ten: (P.acct && P.acct.name) || myEmail(), sig: sg, at: nowISO() } }, "CVHT xác nhận"); renderBB(lopId, bid); } catch (e) { P.toast(e.message, "err"); } };
+  if ($("#bbMo2")) $("#bbMo2").onclick = async () => { try { await upd({ tt: "nhap" }, "mở lại"); renderBB(lopId, bid); } catch (e) { P.toast(e.message, "err"); } };
+  if ($("#bbXoa")) $("#bbXoa").onclick = async () => { if (!await P.ask("Xóa biên bản “" + B.tieuDe + "”?")) return; try { await deleteDoc(ref); P.go("sv-bb/" + lopId); } catch (e) { P.toast(e.message, "err"); } };
+  $("#bbPr").onclick = () => { const h = html() + (B.cv && B.cv.sig ? `<p style="margin-top:14px"><b>Xác nhận của cố vấn học tập:</b> ${esc(B.cv.ten || "")}, ngày ${esc(fmtD(String(B.cv.at).slice(0, 10)))}</p><img src="${B.cv.sig}" style="max-height:60px">` : ""); if (!printHTML("Bien_ban_" + lopId, h)) P.toast("Trình duyệt chặn cửa sổ in.", "err"); };
+}
+
 async function route(h) {
   if (!P.authReady) { $("#main").innerHTML = `<p class="empty">Đang tải…</p>`; return; }
   if (h === "sv") return renderHome();
   if (h === "sv-nhap") return renderNhap();
+  if (h.startsWith("sv-bb/")) { const [, l, id] = h.split("/"); return renderBB(decodeURIComponent(l || ""), id); }
   if (h.startsWith("sv-bbh/")) { const [, l, k] = h.split("/"); return renderBBH(decodeURIComponent(l || ""), k); }
   if (h === "sv-ctdt") return renderCtdt();
   if (h.startsWith("sv/lop/")) return renderLop(decodeURIComponent(h.slice(7)));
@@ -1145,7 +1283,7 @@ async function route(h) {
   renderHome();
 }
 document.addEventListener("pna:auth", async () => {
-  await loadMe(true); reset(); renderBox();
+  await loadMe(true); reset(); renderBox(); avHeader();
   const h = decodeURIComponent(location.hash.slice(1)); if (h === "sv" || h.startsWith("sv/") || h.startsWith("sv-")) route(h);
 });
 window.PNA_SV = { route, reload: () => { reset(); return loadMe(true); } };

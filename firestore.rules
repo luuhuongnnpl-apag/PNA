@@ -215,6 +215,8 @@ service cloud.firestore {
         allow create: if ownHoso(id) && request.resource.data.by == me();
         allow delete: if ownHoso(id) || isAdmin() || me() in get(/databases/$(database)/documents/pna_hoso/$(id)).data.get('cvht', []);
       }
+      // Sổ tay của sinh viên: chỉ chính chủ
+      match /sotay/{n} { allow read, write: if ownHoso(id); }
       // Ghi chú nội bộ của cố vấn học tập: sinh viên không xem được
       match /noibo/{n} {
         allow read, write: if signedIn() && (isAdmin()
@@ -235,6 +237,22 @@ service cloud.firestore {
       allow create, update: if (isSv() && request.resource.data.mssv == mySvDoc().mssv && request.resource.data.lop == mySvDoc().lop)
         || isAdmin() || me() in lopCvht(request.resource.data.lop);
       allow delete: if isAdmin();
+    }
+    // Biên bản họp khác của lớp, chi đoàn, chi hội: ban quản trị lớp (bbh) lập, trình; CVHT xác nhận
+    match /pna_bienban/{b} {
+      allow read: if signedIn() && (isAdmin() || inNd('khoa') || me() in lopCvht(resource.data.lop) || bqt(resource.data.lop, 'bbh'));
+      allow create: if isAdmin() || me() in lopCvht(request.resource.data.lop) || (bqt(request.resource.data.lop, 'bbh') && request.resource.data.tt == 'nhap' && request.resource.data.by == me());
+      allow update: if isAdmin() || me() in lopCvht(resource.data.lop)
+        || (bqt(resource.data.lop, 'bbh') && resource.data.tt in ['nhap', 'tra-lai'] && request.resource.data.tt in ['nhap', 'trinh']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['html', 'tt', 'traLai', 'updated']));
+      allow delete: if isAdmin() || me() in lopCvht(resource.data.lop) || (resource.data.by == me() && resource.data.tt == 'nhap');
+    }
+    // Ảnh đại diện: người dùng tự đặt; CVHT đặt cho sinh viên lớp mình; người đã đăng nhập xem
+    match /pna_anh/{em} {
+      allow read: if signedIn();
+      allow write: if signedIn() && (me() == em || isAdmin()
+        || (exists(/databases/$(database)/documents/pna_sv/$(em)) && me() in get(/databases/$(database)/documents/pna_sv/$(em)).data.cvht))
+        && (request.resource == null || request.resource.data.data.size() < 120000);
     }
     // Biên bản họp lớp đánh giá rèn luyện: BCS/BCH lập, ký trình; CVHT ký, chốt
     match /pna_bbh/{b} {
