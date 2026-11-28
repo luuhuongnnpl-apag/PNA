@@ -5,9 +5,9 @@ window.PNA_CONFIG = {
   // Dán nguyên khối firebaseConfig của dự án PNA (Firebase Console → Project settings → Your apps → Web app → Config)
   FIREBASE: {
     apiKey: "",
-    authDomain: "",
-    projectId: "",
-    storageBucket: "",
+    authDomain: "academic-advising-center.firebaseapp.com",
+    projectId: "academic-advising-center",
+    storageBucket: "academic-advising-center.firebasestorage.app",
     messagingSenderId: "",
     appId: ""
   },
