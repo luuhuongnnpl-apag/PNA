@@ -1,4 +1,4 @@
-/* Đồng bộ Firebase cho PNA — chạy trong GitHub Actions (xem .github/workflows/dong-bo-firebase.yml).
+/* Đồng bộ Firebase cho PNA (PNA_SYNC) — chạy trong GitHub Actions (xem .github/workflows/dong-bo-firebase.yml).
    1. Công bố khóa công khai data/khoa-ma-hoa.pem (từ khóa riêng của tài khoản dịch vụ) để mã hóa gói dữ liệu.
    2. Đăng firestore.rules nếu khác bản đang chạy.
    3. Giải mã, nhập từng gói data/inbox/*.enc vào Firestore; nhập xong xóa gói, ghi nhật ký (không ghi dữ liệu cá nhân).
