@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Trung tâm Cố vấn học tập | PNA</title>
+  <link rel="stylesheet" href="assets/portal.css?v=019">
+  <script type="module" src="assets/portal.js?v=020"></script>
+  <script type="module" src="assets/auth.js?v=017"></script>
+  <style>
+    :root{--navy:#22476d;--line:#d6dee9;background:#f2f4f7;font-size:14px}
+    .frame{width:min(100% - 2.5rem,1600px)}
+    .top{border-bottom:0}.top-inner{min-height:44px}
+    .hero{padding:1.15rem 0;background:linear-gradient(110deg,#e4effa,#f0f6fc);text-align:center}
+    .hero h1{font-family:Georgia,'Times New Roman',serif;font-size:clamp(1.5rem,3vw,2.2rem);text-transform:uppercase}
+    .hero p{font-size:.9rem;letter-spacing:.04em}
+    .layout{grid-template-columns:minmax(190px,21%) minmax(0,1fr) minmax(180px,22%);gap:1.25rem}
+    .nav-group,.card,.announcement,.archive-link{border-radius:4px;box-shadow:0 2px 5px #22476d0d}
+    .nav-group h2{font-size:.95rem}.nav-group [aria-current="page"]{background:var(--navy);color:white}
+    .card{padding:1rem}.card h2{font-size:1.15rem;text-transform:uppercase;border-left:3px solid #285b47;padding-left:.65rem}
+    .announcement-grid,.archive-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,165px),1fr))}
+    .announcement h3{font-size:1rem}.student-services{min-width:0}
+    .student-services h2{font-size:1.1rem;margin:0 0 1rem;padding-bottom:.55rem;border-bottom:3px solid var(--navy)}
+    .service-list{display:grid;gap:.65rem;background:white;border:1px solid var(--line);border-radius:4px;padding:.7rem}
+    .service-list a{display:flex;align-items:center;gap:.65rem;padding:.9rem .65rem;background:#edf3fa;border:1px solid #cbdbea;border-radius:4px;text-decoration:none;font-weight:600;overflow-wrap:anywhere}
+    .service-list a:hover{background:#dce9f6}.service-list a span{font-size:1.6rem;flex:none}
+    @media(max-width:1000px){.layout{grid-template-columns:minmax(170px,24%) minmax(0,1fr)}.student-services{grid-column:2;grid-row:1}.workspace{grid-column:2;grid-row:2}#navigation{grid-row:1 / span 2}.service-list{grid-template-columns:repeat(3,minmax(0,1fr))}}
+    @media(max-width:740px){.frame{width:calc(100% - 1.5rem)}.layout{grid-template-columns:minmax(0,1fr);gap:1rem}.student-services{grid-column:1;grid-row:1}.workspace{grid-column:1;grid-row:3}#navigation{grid-row:2;grid-template-columns:1fr}.service-list{grid-template-columns:1fr}.hero{padding:1rem 0}}
+  
+    .library-kicker{font-size:1.18rem;border-bottom:3px solid var(--navy);padding-bottom:.55rem;margin-bottom:1rem}
+    .library-search{display:flex;gap:0;margin:0 0 1.35rem;box-shadow:0 2px 5px #22476d12}
+    .library-search input{border-radius:4px 0 0 4px}.library-search button{border-radius:0 4px 4px 0;min-width:5rem}
+    .library-page #pageTitle{font-size:1.15rem;text-transform:uppercase;border-left:3px solid #285b47;padding-left:.65rem}
+    .library-crumb{display:block;background:white;border:1px solid var(--line);padding:.55rem .8rem;border-radius:4px;overflow-wrap:anywhere;margin-bottom:1rem;font-size:.88rem}
+    .library-crumb a{text-decoration:none;color:#245a90}.library-tools{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.8rem}
+    .library-tools .button{font-size:.85rem;border-radius:4px}.library-tools .button:not(.secondary){background:#204e37}
+    .library-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,145px),1fr));gap:.9rem;margin:1rem 0}
+    .library-tile{display:flex;flex-direction:column;gap:.55rem;background:white;border:1px solid var(--line);padding:.65rem;border-radius:4px;box-shadow:0 2px 5px #22476d12;text-decoration:none;min-width:0;overflow-wrap:anywhere}
+    .library-folder,.library-document{display:flex;align-items:center;justify-content:center;background:#e3eef7;color:#22476d;font-size:3rem;min-height:95px;border-radius:3px}
+    .library-document{aspect-ratio:4/5;flex-direction:column;background:#f0f3f6;border:1px solid #d6dee9}.library-document small{font-size:.8rem}
+    .library-tile .button{margin-top:auto;text-align:center;font-size:.85rem;padding:.45rem}
+    .library-filter{background:white;border:1px solid var(--line);padding:.6rem;display:flex;align-items:center;justify-content:space-between;gap:.5rem;border-radius:4px}
+    .library-list{grid-template-columns:1fr}.library-list .library-tile{flex-direction:row;align-items:center}.library-list .library-document{width:48px;min-height:55px;font-size:1.4rem}.library-list .button{margin:0 0 0 auto}
+    .library-guide summary{cursor:pointer;font-weight:600;color:var(--navy)}
+    @media(max-width:740px){.library-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.library-list{grid-template-columns:1fr}.library-filter{flex-wrap:wrap}}
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="frame top-inner">
+      <a class="brand" href="#home" aria-label="PNA — Trang chủ">PNA</a>
+      <div class="account">
+        <button id="adminButton" type="button" hidden>Quản trị</button>
+        <button id="authLogin" type="button" disabled>Đăng nhập</button>
+        <button id="authLogout" type="button" hidden>Đăng xuất</button>
+      </div>
+      <span id="authIdentity" hidden></span>
+      <span id="authStatus" class="sr-only" role="status"></span>
+    </div>
+  </header>
+  <div class="hero">
+    <div class="frame">
+      <h1>Trung tâm Cố vấn học tập</h1>
+      <p>Cung cấp hệ thống tài liệu và tư vấn chuyên môn, rèn luyện</p>
+    </div>
+  </div>
+  <main class="frame layout">
+    <nav id="navigation" aria-label="Danh mục"></nav>
+    <div class="workspace">
+      <section id="content" aria-labelledby="pageTitle"></section>
+      <section id="admin" class="card" hidden>
+        <h2 id="adminTitle" tabindex="-1">Quản trị</h2>
+        <div id="editorial"></div>
+        <section class="admin-section" aria-labelledby="publishTitle">
+          <h3 id="publishTitle">Xuất bản trên Trang chủ</h3>
+          <p class="muted">Trang ở trạng thái Sẵn sàng sẽ xuất hiện trên web sau khi xuất bản. Kiểm tra nội dung và cơ sở dữ liệu đính kèm trước khi công khai.</p>
+          <button id="publishEditorial" type="button" hidden>Xuất bản trang sẵn sàng</button>
+          <p id="publicationStatus" role="status"></p>
+        </section>
+        <details class="admin-section">
+          <summary>Đồng bộ bản nháp</summary>
+          <p class="muted">Bản nháp Firebase chỉ dành cho quản trị viên. Tải bản nháp trước khi soạn tiếp trên thiết bị khác.</p>
+          <div class="actions">
+            <button id="builderCloudSave" type="button" hidden>Lưu bản nháp Firebase</button>
+            <button id="builderCloudLoad" type="button" class="secondary" hidden>Tải bản nháp Firebase</button>
+          </div>
+          <p id="builderStatus" role="status"></p>
+        </details>
+        <div id="adminContent"></div>
+        <details class="admin-section">
+          <summary>Tài khoản và phân quyền</summary>
+          <p id="accessInfo"></p>
+          <div id="adminGrantPanel" hidden>
+            <form id="grantForm" class="form-grid">
+              <label>Email Google<input id="grantEmail" type="email" required maxlength="254"></label>
+              <label>Vai trò<select id="grantRole"><option value="advisor">Cố vấn học tập</option><option value="student">Sinh viên</option></select></label>
+              <label>Mã lớp hành chính<input id="grantClasses" maxlength="2000" placeholder="L26A, L26B"></label>
+              <label>Mã lớp học phần<input id="grantCourses" maxlength="2000" placeholder="HP-2026-01"></label>
+              <label>Ngày hết hiệu lực<input id="grantExpiry" type="date"></label>
+              <div class="actions span"><button type="submit">Lưu cấp quyền</button><button id="grantReload" type="button" class="secondary">Tải lại danh sách</button></div>
+            </form>
+            <p id="grantStatus" role="status"></p>
+            <div id="grantList"></div>
+          </div>
+        </details>
+      </section>
+      <p id="feedback" class="feedback" role="status" hidden></p>
+    </div>
+    <aside class="student-services" aria-labelledby="servicesTitle">
+      <h2 id="servicesTitle">DỊCH VỤ SINH VIÊN</h2>
+      <div class="service-list">
+        <a href="#service/retake"><span aria-hidden="true">↻</span>Đăng ký học lại, cải thiện</a>
+        <a href="#service/withdraw"><span aria-hidden="true">−</span>Đăng ký rút học phần</a>
+        <a href="#service/signature"><span aria-hidden="true">✎</span>Xác nhận chữ kí</a>
+      </div>
+    </aside>
+  </main>
+  <footer>Trung tâm Cố vấn học tập · Công cụ hỗ trợ học tập và rèn luyện</footer>
+</body>
+</html>

@@ -1,0 +1,24 @@
+name: PNA security emulator
+on:
+  push:
+    branches: ['preview/demo-v0.1']
+    paths: ['firestore.rules','firebase.json','package.json','tests/**','.github/workflows/security-emulator.yml']
+  pull_request:
+    paths: ['firestore.rules','firebase.json','package.json','tests/**','.github/workflows/security-emulator.yml']
+permissions:
+  contents: read
+jobs:
+  firestore-rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm install --no-audit --no-fund
+      - run: npm test

@@ -1,0 +1,37 @@
+rules_version = '2';
+service cloud.firestore {
+ match /databases/{database}/documents {
+  function google() { return request.auth != null && request.auth.token.email_verified == true && request.auth.token.firebase.sign_in_provider == 'google.com'; }
+  function admin() { return google() && request.auth.token.email == 'luuhuong.nnpl@gmail.com'; }
+  function grant() { return get(/databases/$(database)/documents/accessGrants/$(request.auth.token.email)).data; }
+  function active() { return google() && exists(/databases/$(database)/documents/accessGrants/$(request.auth.token.email)) && grant().active == true && grant().role in ['advisor','student'] && (grant().expiresAt == null || grant().expiresAt > request.time); }
+  function validGrant(email) { let d=request.resource.data; return email != 'luuhuong.nnpl@gmail.com' && d.keys().hasAll(['role','classIds','courseIds','active','expiresAt','updatedAt','updatedBy']) && d.keys().hasOnly(['role','classIds','courseIds','active','expiresAt','updatedAt','updatedBy']) && d.role in ['advisor','student'] && d.classIds is list && d.classIds.size() <= 100 && d.courseIds is list && d.courseIds.size() <= 100 && (d.role != 'advisor' || d.classIds.size() > 0) && (d.role != 'student' || d.courseIds.size() > 0) && d.active is bool && (d.expiresAt == null || d.expiresAt is timestamp) && d.updatedAt == request.time && d.updatedBy == request.auth.uid; }
+  match /accessGrants/{email} {
+   allow get: if admin() || (google() && request.auth.token.email == email);
+   allow list: if admin();
+   allow create, update: if admin() && validGrant(email);
+   allow delete: if false;
+  }
+  match /administrativeClasses/{id} { allow get: if admin() || (active() && id in grant().classIds); allow list,write: if false; }
+  match /courseSections/{id} { allow get: if admin() || (active() && id in grant().courseIds); allow list,write: if false; }
+  match /systemLayouts/adminDraft {
+   allow get: if admin();
+   allow create,update: if admin() && request.resource.data.keys().hasOnly(['payload','version','updatedAt','updatedBy']) && request.resource.data.payload is string && request.resource.data.payload.size() <= 500000 && request.resource.data.version == 1 && request.resource.data.updatedAt == request.time && request.resource.data.updatedBy == request.auth.uid;
+   allow list,delete: if false;
+  }
+  // Only the explicitly published resource snapshot is readable from the public website.
+  function validPublication() {
+   let data = request.resource.data;
+   return data.keys().hasAll(['payload','version','publishedAt'])
+    && data.keys().hasOnly(['payload','version','publishedAt'])
+    && data.payload is string && data.payload.size() > 0 && data.payload.size() <= 350000
+    && data.version == 1 && data.publishedAt == request.time;
+  }
+  match /systemLayouts/publishedEditorial {
+   allow get: if true;
+   allow create, update: if admin() && validPublication();
+   allow list, delete: if false;
+  }
+  match /{document=**} { allow read,write: if false; }
+ }
+}
