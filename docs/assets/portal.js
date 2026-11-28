@@ -138,21 +138,68 @@ function missing() {
   return card('Không tìm thấy trang', '<a href="#home">Về trang chủ</a>');
 }
 
+const pndHome = 'https://luuhuongnnpl-apag.github.io/PN-degital/';
+function pndDocument(raw) {
+  try {
+    const u = new URL(raw);
+    return u.origin === 'https://luuhuongnnpl-apag.github.io' &&
+      u.pathname === '/PN-degital/' && /^#xem\/[^/?#]+$/.test(u.hash) ? u.href : null;
+  } catch { return null; }
+}
 function resource(id, title) {
   const custom = read(navStorage, []).find(item => item.id === id);
   const published = publication.pages.find(page => pageRoute(page.id) === id);
   const pageId = published?.id || id;
   const children = publication.pages.filter(page => page.parent === pageId);
   const blocks = published?.blocks || starterContent(id);
-  const body = renderBlocks(blocks, publication.collections, true) ||
-    `<p class="notice-body muted">${esc(custom?.body || pending)}</p>`;
-  const parent = published?.parent && resourceItems().find(([key]) => key === pageRoute(published.parent));
-  const parentTitle = parent?.[1] || publication.pages.find(page => page.id === published?.parent)?.title;
-  return card(published?.title || title, `<div class="resource-content">
-    ${parentTitle ? `<p>${routeLink(pageRoute(published.parent), 'Về ' + parentTitle)}</p>` : ''}
-    ${body}
-    ${children.length ? `<h3>Trang con</h3><ul>${children.map(page => `<li>${routeLink(pageRoute(page.id), page.title)}</li>`).join('')}</ul>` : ''}
-  </div>`);
+  const links = blocks.filter(b => b.type === 'link' && pndDocument(b.url));
+  const body = renderBlocks(blocks.filter(b => !links.includes(b)), publication.collections, true) ||
+    '<p class="muted">' + esc(custom?.body || pending) + '</p>';
+  const ancestors = [];
+  const seen = new Set([pageId]);
+  let parent = published?.parent;
+  while (parent && !seen.has(parent)) {
+    seen.add(parent);
+    const p = publication.pages.find(page => page.id === parent);
+    const label = p?.title || resourceItems().find(([key]) => key === pageRoute(parent))?.[1];
+    if (!label) break;
+    ancestors.unshift(routeLink(pageRoute(parent), label));
+    parent = p?.parent;
+  }
+  return `<section class="library-page">
+    <h2 class="library-kicker">DANH MỤC TÀI LIỆU SỐ</h2>
+    <form class="library-search" role="search"><label class="sr-only" for="libraryQuery">Tìm trong danh mục</label><input id="libraryQuery" placeholder="Tìm theo tên thư mục, tài liệu trong danh mục..." type="search"><button type="submit">TÌM</button></form>
+    ${heading(published?.title || title)}
+    <nav class="library-crumb" aria-label="Đường dẫn"><a href="#home">⌂ TRANG CHỦ</a> / ${ancestors.length ? ancestors.join(' / ') + ' / ' : ''}${esc(published?.title || title)}</nav>
+    <div class="library-tools"><a class="button secondary" href="${pndHome}" target="_blank" rel="noopener noreferrer">Mở kho PND ↗</a>
+    ${admin() ? '<a class="button" href="#admin">＋ Liên kết tài liệu PND</a><a class="button secondary" href="#admin">Quản lý thư mục / nội dung</a>' : ''}</div>
+    ${admin() ? '<p class="muted">Trong Quản trị, chọn trang này, thêm khối Liên kết với địa chỉ PND dạng #xem/ID tài liệu, lưu bản nháp và xuất bản. Chỉ công bố liên kết được phép chia sẻ.</p>' : ''}
+    <div class="library-grid">${children.map(page => `<a class="library-tile" data-library-name="${esc(page.title)}" href="#${esc(pageRoute(page.id))}"><span class="library-folder" aria-hidden="true">▰</span><strong>${esc(page.title)}</strong></a>`).join('')}</div>
+    <h3>DANH SÁCH TÀI LIỆU</h3>
+    <div class="library-filter"><span id="libraryCount">Tìm được ${links.length} tài liệu liên kết PND</span><button type="button" class="secondary" id="libraryView" aria-pressed="false">Danh sách</button></div>
+    <div class="library-grid" id="libraryDocuments">${links.map(b => `<article class="library-tile" data-library-name="${esc(b.value || b.url)}" data-library-doc><div class="library-document" aria-hidden="true">▤<small>PND</small></div><strong>${esc(b.value || 'Tài liệu PND')}</strong><a class="button" href="${esc(pndDocument(b.url))}" target="_blank" rel="noopener noreferrer">Chi tiết ↗</a></article>`).join('')}</div>
+    ${links.length ? '' : '<p class="muted">Chưa có tài liệu liên kết PND trong danh mục này.</p>'}
+    <details class="card library-guide"><summary>Hướng dẫn và nội dung danh mục</summary><div class="resource-content">${body}</div></details>
+  </section>`;
+}
+function bindLibrary(content) {
+  const form = content.querySelector('.library-search');
+  if (!form) return;
+  const query = form.querySelector('input');
+  const filter = () => {
+    const q = query.value.trim().toLocaleLowerCase('vi');
+    for (const tile of content.querySelectorAll('[data-library-name]')) tile.hidden = !tile.dataset.libraryName.toLocaleLowerCase('vi').includes(q);
+    const count = content.querySelectorAll('[data-library-doc]:not([hidden])').length;
+    content.querySelector('#libraryCount').textContent = 'Tìm được ' + count + ' tài liệu liên kết PND';
+  };
+  form.addEventListener('submit', e => { e.preventDefault(); filter(); });
+  query.addEventListener('input', filter);
+  const view = content.querySelector('#libraryView');
+  view.addEventListener('click', () => {
+    const list = content.querySelector('#libraryDocuments').classList.toggle('library-list');
+    view.setAttribute('aria-pressed', String(list));
+    view.textContent = list ? 'Lưới' : 'Danh sách';
+  });
 }
 
 function publishedRow(route) {
@@ -410,6 +457,7 @@ function render({focus = false, cohort} = {}) {
   else if (services.some(([id]) => route === 'service/' + id)) content.innerHTML = card(services.find(([id]) => route === 'service/' + id)[1], '<p class="muted">Đang chuẩn bị quy trình và biểu mẫu chính thức. Chưa tiếp nhận đăng ký trực tuyến.</p><a href="#home">Về trang chủ</a>');
   else if (route === 'admin') content.innerHTML = locked('Quản trị');
   else content.innerHTML = missing();
+  bindLibrary(content);
   if (focus) el('pageTitle').focus();
   for (const img of content.querySelectorAll('[data-image]')) {
     getAttachment(img.dataset.image).then(blob => {
