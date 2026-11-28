@@ -20,12 +20,29 @@ service cloud.firestore {
     function hasCode() { return signedIn() && exists(userPath()) && exists(/databases/$(database)/documents/pna_ma/$(get(userPath()).data.code)); }
     function codeData() { return get(/databases/$(database)/documents/pna_ma/$(get(userPath()).data.code)).data; }
 
+    // ===== Thủ tục sinh viên (28/11/2026) =====
+    function me() { return email().lower(); }
+    function isCvht() { return acctOk() && acct().role == 'cvht'; }
+    function svPath() { return /databases/$(database)/documents/pna_sv/$(me()); }
+    function isSv() { return signedIn() && email() != '' && exists(svPath()); }
+    function ndPath() { return /databases/$(database)/documents/pna_tt_settings/nguoiduyet; }
+    function inNd(k) { return signedIn() && email() != '' && exists(ndPath()) && me() in get(ndPath()).data.get(k, []); }
+    function lopCvht(l) { return get(/databases/$(database)/documents/pna_lop/$(l)).data.get('cvht', []); }
+    function donReader(d) { return isAdmin() || d.sv.email == me() || me() in d.cvht || inNd('khoa') || inNd('qldt'); }
+    function donActor(d) {
+      return d.status == 'cho-duyet' && (isAdmin()
+        || (d.stepRole == 'cvht' && me() in d.cvht)
+        || (d.stepRole in ['khoa', 'qldt'] && inNd(d.stepRole)));
+    }
+    function stepOk(n) { return n.status != 'cho-duyet' || (n.step < n.steps.size() && n.stepRole == n.steps[n.step].role); }
+    function appended(n, o) { return n.history.size() == o.history.size() + 1; }
+
     function isAdmin() { return superAdmin() || (acctOk() && acct().role == 'quan-tri'); }
     // Phân quyền tùy chỉnh (13/11/2026): pna_settings/roles { roles: { <loại>: { name, levels, perms{dl,up,edit,move,del,folders,kho,note,ai,rec} } } }
     function rolesPath() { return /databases/$(database)/documents/pna_settings/roles; }
     function roleDef(role) { return exists(rolesPath()) ? get(rolesPath()).data.roles.get(role, null) : null; }
     function levelsOld(role) {
-      return role == 'xem' ? ['cong-khai', 'noi-bo'] : ['cong-khai', 'noi-bo', 'han-che'];
+      return role in ['xem', 'sinh-vien'] ? ['cong-khai', 'noi-bo'] : ['cong-khai', 'noi-bo', 'han-che'];
     }
     function levels(role) {
       let d = roleDef(role);
@@ -72,10 +89,14 @@ service cloud.firestore {
       allow delete: if isManager();
     }
 
-    // Tài khoản: người dùng đọc hồ sơ của chính mình; quản trị viên quản lý
+    // Tài khoản: người dùng đọc hồ sơ của chính mình; quản trị viên quản lý;
+    // cố vấn học tập cấp, sửa, xóa tài khoản loại Sinh viên
     match /pna_accounts/{em} {
       allow get: if signedIn() && (email().lower() == em || isAdmin());
       allow list, write: if isAdmin();
+      allow create: if isCvht() && request.resource.data.role == 'sinh-vien';
+      allow update: if isCvht() && resource.data.role == 'sinh-vien' && request.resource.data.role == 'sinh-vien';
+      allow delete: if isCvht() && resource.data.role == 'sinh-vien';
     }
 
     // Mã truy cập dùng chung
@@ -90,6 +111,57 @@ service cloud.firestore {
     }
     match /pna_users/{uid} {
       allow read, write: if signedIn() && (request.auth.uid == uid || isAdmin());
+    }
+
+    // ===== Thủ tục sinh viên =====
+    match /pna_tt_settings/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /pna_lop/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /pna_chuky/{em} { allow read, write: if signedIn() && me() == em; }
+
+    // Hồ sơ sinh viên: do cố vấn học tập của lớp hoặc quản trị cấp; sinh viên đọc hồ sơ của mình
+    match /pna_sv/{em} {
+      allow get: if signedIn() && (me() == em || isAdmin() || me() in resource.data.cvht);
+      allow list: if signedIn() && (isAdmin() || me() in resource.data.cvht);
+      allow create, update: if isAdmin() || (isCvht() && me() in request.resource.data.cvht
+        && request.resource.data.cvht == lopCvht(request.resource.data.lop)
+        && (resource == null || me() in resource.data.cvht));
+      allow delete: if isAdmin() || (isCvht() && me() in resource.data.cvht);
+    }
+
+    // Đơn: sinh viên nộp; người duyệt của bước hiện tại xử lý; lịch sử chỉ được nối thêm
+    match /pna_don/{id} {
+      allow read: if signedIn() && donReader(resource.data);
+      allow create: if isSv()
+        && request.resource.data.sv.email == me()
+        && request.resource.data.sv.mssv == get(svPath()).data.mssv
+        && request.resource.data.cvht == get(svPath()).data.cvht
+        && request.resource.data.lop == get(svPath()).data.lop
+        && request.resource.data.status == 'cho-duyet' && request.resource.data.step == 0
+        && request.resource.data.steps.size() > 0 && stepOk(request.resource.data)
+        && request.resource.data.history.size() == 1;
+      allow update: if signedIn() && (
+        // người duyệt bước hiện tại: đồng ý / yêu cầu bổ sung / không duyệt
+        (donActor(resource.data) && appended(request.resource.data, resource.data) && stepOk(request.resource.data)
+          && request.resource.data.status in ['cho-duyet', 'bo-sung', 'da-duyet', 'tu-choi']
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'step', 'stepRole', 'history', 'updated']))
+        // sinh viên: rút đơn, hoặc bổ sung và gửi lại từ bước đầu
+        || (resource.data.sv.email == me() && resource.data.status in ['cho-duyet', 'bo-sung'] && appended(request.resource.data, resource.data)
+          && request.resource.data.sv.email == resource.data.sv.email && request.resource.data.sv.mssv == resource.data.sv.mssv
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'step', 'stepRole', 'history', 'updated', 'data', 'lyDo', 'links', 'sv', 'svSig', 'nTep', 'hash'])
+          && (request.resource.data.status == 'rut'
+            || (resource.data.status == 'bo-sung' && request.resource.data.status == 'cho-duyet' && request.resource.data.step == 0 && stepOk(request.resource.data))))
+        // người duyệt gắn đường link bản PDF đã ký số
+        || (donReader(resource.data) && resource.data.sv.email != me()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['banKySo', 'updated'])));
+      allow delete: if isAdmin();
+
+      match /tep/{t} {
+        allow read: if signedIn() && donReader(get(/databases/$(database)/documents/pna_don/$(id)).data);
+        allow create: if signedIn() && get(/databases/$(database)/documents/pna_don/$(id)).data.sv.email == me()
+          && get(/databases/$(database)/documents/pna_don/$(id)).data.status in ['cho-duyet', 'bo-sung']
+          && request.resource.data.data is string && request.resource.data.data.size() < 950000;
+        allow delete: if isAdmin();
+      }
     }
 
     // Nhật ký thao tác

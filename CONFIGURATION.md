@@ -60,3 +60,20 @@ Công khai (`cong-khai`) · Nội bộ (`noi-bo`, mặc định) · Hạn chế 
 - Thủ thư muốn tải tệp lên cần tài khoản Google có quyền chỉnh sửa thư mục PNA trên Drive (tick “Cấp quyền chỉnh sửa thư mục PNA” khi cấp tài khoản).
 - Chặn tải về là chặn trên giao diện web (ẩn nút mở/tải, che nút mở rộng của khung xem trước); ai đã có đường link Drive vẫn mở được tệp.
 - Quy tắc bảo mật: `firestore.rules` — dán nguyên tệp vào Firebase Console (dự án PNA) → Firestore → Rules → Publish.
+
+## Thủ tục sinh viên (28/11/2026) — `assets/thutuc.js`, `assets/thutuc-data.js`
+Khung **THỦ TỤC SINH VIÊN** ở cột phải: sinh viên lập đơn trực tuyến, ký điện tử, gửi cố vấn học tập; đơn đi qua các bước duyệt cấu hình theo từng thủ tục; in hoặc lưu PDF đơn đã duyệt.
+
+**Thiết lập một lần (quản trị):**
+1. Tài khoản & phân quyền → cấp tài khoản Google cho giảng viên với loại **Cố vấn học tập**.
+2. Khung Thủ tục → **Lớp & tài khoản sinh viên** → bảng *Quản lý danh sách lớp*: thêm mã lớp, gắn email cố vấn.
+3. **Cấu hình thủ tục, người duyệt**: ghi email Lãnh đạo Khoa (và Ban QLĐT nếu dùng bước tiếp nhận); sửa, bật/tắt thủ tục, bước duyệt, trường nhập.
+4. Dán lại `firestore.rules` vào Firebase Console → Firestore → Rules → Publish.
+
+**Cố vấn học tập:** Lớp & tài khoản sinh viên → dán danh sách từ Excel (Mã SV, Họ tên, Ngày sinh, SĐT, Gmail nếu có) → Cấp tài khoản. Không có Gmail: tên đăng nhập = mã SV, mật khẩu ban đầu = ngày sinh `ddmmyyyy`. Sinh viên quên mật khẩu: quản trị xóa người dùng trong Firebase Console → Authentication, cố vấn cấp lại.
+
+**Bộ thủ tục mặc định** theo Quy chế đào tạo trình độ đại học (QĐ 2567-QĐ/HVHCQTC ngày 09/3/2026): nghỉ học tạm thời (Đ53 k1–3); trở lại học (Đ53 k4); gia hạn nghỉ (Đ53 k4 điểm c); thôi học (Đ53 k5–6); điều chỉnh đăng ký học phần (Đ9, PL03 bước 5); học lại/cải thiện/học vượt (Đ13, PL03 bước 6–7); hoãn thi, phúc khảo (Đ13 k5 + quy định thi của Học viện); công nhận kết quả, chuyển đổi tín chỉ (Đ18, PL07); chuyển chương trình/ngành/nơi học (Đ54 k1); học cùng lúc hai chương trình (Đ35); đơn khác.
+
+**Chữ ký:** chữ ký điện tử nội bộ = hình chữ ký + tài khoản đăng nhập + thời điểm + mã băm SHA-256 nội dung, lưu trong lịch sử đơn (chỉ được nối thêm). Không thay thế chữ ký số; khi văn bản bắt buộc ký số, người duyệt ký bằng ứng dụng ký số (VNPT SmartCA, Viettel CA…) rồi **Gắn bản PDF đã ký số** vào đơn.
+
+**Firestore:** `pna_tt_settings/{thutuc, nguoiduyet}` · `pna_lop/{mã lớp}` (cvht[]) · `pna_sv/{email}` (hồ sơ SV, cvht[]) · `pna_don/{id}` (+ `tep/{id}`: tệp minh chứng ≤ ~650 KB) · `pna_chuky/{email}`. Quy tắc: sinh viên chỉ nộp đơn đúng hồ sơ và cố vấn của mình; chỉ người duyệt của bước hiện tại được xử lý; sinh viên rút đơn hoặc gửi lại khi được yêu cầu bổ sung; cố vấn chỉ cấp tài khoản loại Sinh viên cho lớp mình phụ trách.

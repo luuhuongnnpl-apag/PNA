@@ -141,6 +141,8 @@ const ROLES_DEFAULT = {
   "xem-rong":   { name: "Độc giả mở rộng", levels: L3, perms: { ...P_READ } },
   "chuyen-muc": { name: "Người dùng chuyên mục", levels: L3, perms: { ...P_READ, dl: true } },
   "bien-muc":   { name: "Thủ thư / Biên mục", levels: L3, perms: { ...P_ALL } },
+  "cvht":       { name: "Cố vấn học tập", levels: L3, perms: { ...P_READ, dl: true } },
+  "sinh-vien":  { name: "Sinh viên", levels: ["cong-khai", "noi-bo"], perms: { ai: true } },
   "quan-tri":   { name: "Quản trị hệ thống", levels: [...L3, "mat"], perms: { ...P_ALL }, admin: true, fixed: true }
 };
 const GUEST_DEFAULT = { name: "Khách (chưa đăng nhập)", levels: ["cong-khai"], perms: { ...P_READ }, guest: true };
@@ -508,6 +510,7 @@ function renderAuth() {
   if (!$("#btnScan").disabled) $("#adminNote").textContent = canUp() ? (settings ? (driveTok ? "Đã kết nối Drive" + (driveWho && driveWho.email ? " (" + driveWho.email + ")" : "") + (settings.lastScan ? " · quét lần cuối " + new Date(settings.lastScan).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }) : "") + "." : "Drive sẽ tự kết nối lại khi bấm Quét hoặc Tải lên.") : "Chưa có cây thư mục: bấm Khởi tạo.") : "";
   $("#btnInit").hidden = !!settings || !isAdmin;
   void g;
+  document.dispatchEvent(new CustomEvent("pna:auth"));
 }
 function currentCatKey() {
   const h = location.hash.slice(1);
@@ -531,6 +534,11 @@ function route() {
   if (h.startsWith("xem/")) { renderHome(); $("#layout").classList.remove("no-tools"); const id = h.slice(4); if (items[id] && currentOpenDocId !== id) openDoc(id); else if (!items[id] && authReady) { toast("Không tìm thấy tài liệu hoặc bạn chưa có quyền xem. Hãy đăng nhập.", "err"); } return; }
   if (h === "tai-khoan") return renderAccounts();
   if (h === "thu-muc" || h === "thu-muc/them-bst") return renderFolders();
+  /* Cổng Thủ tục sinh viên (assets/thutuc.js) */
+  if (h === "tt" || h.startsWith("tt/") || h.startsWith("tt-")) {
+    if (window.PNA_TT) return window.PNA_TT.route(h);
+    $("#main").innerHTML = '<p class="empty">Đang tải Thủ tục sinh viên…</p>'; return;
+  }
   location.hash = "";
 }
 const go = h => { if (location.hash.slice(1) === h) route(); else location.hash = h; };
@@ -4070,6 +4078,12 @@ async function migrateAccess() {
     console.info("Đã gán mức truy cập cho " + miss.length + " tài liệu.");
   } catch (e) { console.warn("gán mức truy cập", e.message); }
 }
+/* Cầu nối cho các phân hệ (Thủ tục sinh viên…) */
+window.PNA = {
+  app, db, auth, esc, toast, ask, go, logAct, toEmail, showName, createAuthUser, ACCT_DOMAIN,
+  get user() { return user; }, get isAdmin() { return isAdmin; }, get acct() { return acct; }, get authReady() { return authReady; },
+  route: () => route()
+};
 route();
 onAuthStateChanged(auth, async u => {
   user = u;

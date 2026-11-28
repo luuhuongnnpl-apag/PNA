@@ -33,11 +33,11 @@ Quy chế – quy định đào tạo · Chương trình đào tạo · Kế ho�
 | 2 | Nạp nội dung: quy chế đào tạo, CTĐT, kế hoạch năm học, biểu mẫu hiện hành (kiểm tra hiệu lực văn bản) | Chưa làm |
 | 3 | Lớp – khóa: danh sách lớp CVHT phụ trách, cán bộ lớp, thông báo theo lớp kèm xác nhận đã đọc | Chưa làm — cần duyệt quy chế dữ liệu sinh viên |
 | 4 | Lịch học vụ và nhắc việc (đăng ký học phần, thi, học bổng, rèn luyện) theo khóa | Chưa làm |
-| 5 | Biểu mẫu trực tuyến: đơn, khảo sát, góp ý; CVHT tiếp nhận và phản hồi | Chưa làm |
+| 5 | Cổng Thủ tục sinh viên: 12 thủ tục theo Quy chế đào tạo 2026, đơn trực tuyến, ký điện tử nội bộ, duyệt nhiều bước, in PDF; CVHT cấp tài khoản SV | Xong mã nguồn 28/11; khảo sát, góp ý chưa làm |
 | 6 | Sổ tay sinh viên: mục tiêu, kế hoạch học tập cá nhân, tự đánh giá (riêng tư mặc định) | Chưa làm |
 | 7 | Báo cáo CVHT theo học kỳ, nhật ký tư vấn; liên thông PNL/PND chỉ đọc qua liên kết | Chưa làm |
 
 ## 6. Nguyên tắc dữ liệu
-- Chưa đưa dữ liệu cá nhân, điểm số sinh viên thật lên hệ thống trước khi có phần 3 được duyệt và kiểm thử quy tắc.
+- Dữ liệu sinh viên chỉ gồm hồ sơ tối thiểu để lập đơn (mã SV, họ tên, ngày sinh, lớp, điện thoại) do CVHT cấp; không lưu điểm số; quyền đọc giới hạn ở sinh viên, CVHT của lớp, người duyệt.
 - Không lưu mật khẩu, khóa bí mật, hồ sơ sinh viên trong GitHub; `config.js` chỉ chứa khóa công khai.
 - Mọi thao tác quản trị ghi nhật ký `pna_activity`; xóa đưa vào thùng rác Drive trước.
