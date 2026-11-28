@@ -862,3 +862,24 @@ body.arrange .pcol>.arr-drag{opacity:.45}
 .hs-form .fld{margin-bottom:8px}
 @media (max-width:860px){.hs-two{grid-template-columns:1fr}.hs-journey{grid-template-columns:repeat(2,minmax(0,1fr))}.hs-filter{grid-template-columns:1fr}}
 @media (max-width:520px){.hs-journey{grid-template-columns:1fr}}
+/* Kéo ô trực tiếp bằng tiêu đề (quản trị, màn hình rộng) */
+@media (min-width:1001px){
+  body.can-arrange .pcol>*>.sbox-title,body.can-arrange .pcol>*>.sec-title{cursor:grab;user-select:none}
+  body.can-arrange .pcol>*>.sbox-title::before{content:"⠿";float:right;color:#b6bfcc;font-size:15px;line-height:1;margin-left:6px}
+  body.can-arrange .pcol>*>.sbox-title:hover::before{color:var(--navy)}
+  body.arr-live .layout #colR,body.arr-live #toolsCol{outline:2px dashed #9fb3cc;outline-offset:4px;border-radius:8px;min-height:200px;background:rgba(30,98,208,.03)}
+  body.arr-live .pcol>.arr-drag{opacity:.45}
+}
+/* Soạn nội dung / thông báo trong hộp Tải lên */
+.up-mode{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:2px 0 12px}
+.up-mode button{border:0;background:#fff;padding:10px 12px;font:600 13.5px var(--sans);color:var(--muted);cursor:pointer}
+.up-mode button+button{border-left:1px solid var(--line)}
+.up-mode button.on{background:var(--navy);color:#fff}
+.up-tools{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0 6px}
+.up-body{min-height:200px;max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:12px 14px;background:#fff;font:14.5px/1.65 var(--sans);outline:none;overflow-wrap:anywhere}
+.up-body:focus{border-color:var(--navy-l);box-shadow:0 0 0 2px rgba(143,29,34,.12)}
+.up-body:empty::before{content:attr(data-ph);color:#9aa3af}
+.up-body img,.infile-sheet img{max-width:100%;height:auto;border-radius:4px}
+.up-body table{border-collapse:collapse}.up-body td,.up-body th{border:1px solid #cbd5e1;padding:4px 6px}
+.news-tools{float:right;margin-top:-4px}
+@media (max-width:600px){.up-mode{grid-template-columns:1fr}.up-mode button+button{border-left:0;border-top:1px solid var(--line)}}

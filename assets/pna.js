@@ -585,8 +585,9 @@ function renderHome() {
     + (rest.length ? `<h3 class="nw-sub">Tin trước đó</h3><div class="nw-list">${rest.map(f => newsItemHTML(f, "row")).join("")}</div>` : "")
     + (list.length > newsShown ? `<div class="nw-foot"><button type="button" class="btn" id="newsMore">Xem thêm tin (${list.length - newsShown})</button></div>` : "");
   const lockHTML = lockedStars.length ? `<h3 class="nw-sub">Tin dành cho người đã đăng nhập</h3><div class="star-list">${lockedStars.slice(0, 12).map(s => `<button type="button" class="star-item" data-star="${esc(s.id)}"><span class="st">🔒</span><span>${esc(s.name)}<small>${esc(CAT[s.cat] ? CAT[s.cat].name : "")}</small></span></button>`).join("")}</div>` : "";
-  $("#main").innerHTML = `<section class="box news"><h2 class="box-title">Tin mới</h2>${body}${lockHTML}</section>`;
+  $("#main").innerHTML = `<section class="box news">${can("up") ? `<button type="button" class="btn sm primary news-tools" id="newsCompose">✍ Soạn thông báo mới</button>` : ""}<h2 class="box-title">Tin mới</h2>${body}${lockHTML}</section>`;
   const more = $("#newsMore"); if (more) more.onclick = () => { newsShown += NEWS_STEP; renderHome(); };
+  const nc = $("#newsCompose"); if (nc) nc.onclick = () => openUpload(catRootId("thong-bao") || null, null, "text");
 }
 document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.classList && e.target.classList.contains("nw")) { e.preventDefault(); e.target.click(); } });
 
@@ -2622,11 +2623,122 @@ function addUpFiles(list) {
   renderUpList();
 }
 
-function openUpload(folderId, files) {
+/* ---------- Soạn nội dung / thông báo ngay trong hộp Tải lên (không cần tệp) ----------
+   Dán chữ (giữ định dạng cơ bản), dán hoặc chọn ảnh; khi lưu, ảnh tải lên Drive (thư mục ảnh bìa),
+   nội dung lưu thành tài liệu dạng ghi chú (isNote, noteContent) — mở xem như văn bản, đăng được lên TIN MỚI. */
+let upMode = "file";
+const upImgs = new Map();   // mã tạm → File
+const MAX_BODY_IMG = 10;
+function setUpMode(m) {
+  upMode = m;
+  document.querySelectorAll("[data-upmode]").forEach(b => b.classList.toggle("on", b.dataset.upmode === m));
+  $("#upPaneFile").hidden = m !== "file"; $("#upPaneText").hidden = m !== "text";
+  $("#upNameLbl").textContent = m === "text" ? "Tiêu đề (tên văn bản / thông báo)" : "Tên văn bản";
+  $("#upName").disabled = m === "text" ? false : $("#upName").disabled;
+  if (m === "text") { if (!$("#upStar").dataset.touched) $("#upStar").checked = true; $("#upGo").textContent = "Đăng / lưu nội dung"; setTimeout(() => $("#upName").value ? $("#upBody").focus() : $("#upName").focus(), 0); }
+  else { if (!$("#upStar").dataset.touched) $("#upStar").checked = false; $("#upGo").textContent = "Lưu vào thư viện"; renderUpList(); }
+}
+const BODY_TAGS = new Set(["P", "BR", "B", "STRONG", "I", "EM", "U", "S", "UL", "OL", "LI", "H1", "H2", "H3", "H4", "H5", "H6", "TABLE", "THEAD", "TBODY", "TFOOT", "TR", "TD", "TH", "A", "IMG", "BLOCKQUOTE", "SPAN", "DIV", "SUB", "SUP", "HR", "PRE", "CODE", "CAPTION"]);
+const DROP_TAGS = new Set(["SCRIPT", "STYLE", "META", "LINK", "TITLE", "HEAD", "IFRAME", "OBJECT", "EMBED", "SVG", "MATH", "FORM", "INPUT", "BUTTON", "SELECT", "TEXTAREA", "NOSCRIPT", "TEMPLATE"]);
+function cleanBody(html) {
+  const t = document.createElement("template"); t.innerHTML = html;
+  const w = document.createTreeWalker(t.content, NodeFilter.SHOW_COMMENT); const cm = []; while (w.nextNode()) cm.push(w.currentNode); cm.forEach(n => n.remove());
+  [...t.content.querySelectorAll("*")].reverse().forEach(el => {
+    const tag = el.tagName.toUpperCase();
+    if (DROP_TAGS.has(tag)) return el.remove();
+    if (!BODY_TAGS.has(tag)) { el.replaceWith(...el.childNodes); return; }
+    for (const a of [...el.attributes]) {
+      const n = a.name.toLowerCase(), v = a.value.trim();
+      const keep = (n === "href" && tag === "A" && /^(https?:|mailto:|#)/i.test(v)) || (n === "src" && tag === "IMG" && /^(https?:|blob:)/i.test(v)) || n === "data-pend" || ((n === "colspan" || n === "rowspan") && /^\d+$/.test(v)) || (n === "alt" && tag === "IMG");
+      if (!keep) el.removeAttribute(a.name);
+    }
+    if (tag === "A") { el.setAttribute("target", "_blank"); el.setAttribute("rel", "noopener"); }
+    if (tag === "IMG" && !el.getAttribute("src")) el.remove();
+  });
+  return t.innerHTML;
+}
+function upBodyCount() { const n = $("#upBody").querySelectorAll("img").length; $("#upImgN").textContent = n ? n + " ảnh" : ""; return n; }
+function addBodyImages(files) {
+  files = [...files].filter(f => f && f.type && f.type.startsWith("image/"));
+  if (!files.length) return false;
+  let room = MAX_BODY_IMG - upBodyCount();
+  if (room <= 0) { toast("Tối đa " + MAX_BODY_IMG + " ảnh trong một nội dung.", "err"); return true; }
+  const html = files.slice(0, room).map(f => {
+    if (f.size > 12 * 1024 * 1024) { toast("Ảnh “" + (f.name || "") + "” lớn hơn 12 MB, đã bỏ qua.", "err"); return ""; }
+    const id = "p" + rid(); upImgs.set(id, f);
+    return `<p><img src="${URL.createObjectURL(f)}" data-pend="${id}" alt=""></p>`;
+  }).join("");
+  if (files.length > room) toast("Chỉ nhận thêm " + room + " ảnh (tối đa " + MAX_BODY_IMG + ").", "err");
+  $("#upBody").focus(); document.execCommand("insertHTML", false, html); upBodyCount();
+  return true;
+}
+function bodyPaste(e) {
+  const cd = e.clipboardData; if (!cd) return;
+  const imgs = [...cd.files].filter(f => f.type.startsWith("image/"));
+  const html = cd.getData("text/html");
+  if (imgs.length && !html) { e.preventDefault(); addBodyImages(imgs); return; }
+  e.preventDefault();
+  if (html) {
+    // ảnh nhúng dạng data: (dán từ một số ứng dụng) → chuyển thành tệp chờ tải lên; ảnh file:/// (Word) không đọc được → bỏ
+    const t = document.createElement("template"); t.innerHTML = html;
+    t.content.querySelectorAll("img").forEach(im => {
+      const src = im.getAttribute("src") || "";
+      const m = /^data:(image\/[\w.+-]+);base64,(.+)$/.exec(src);
+      if (m && upBodyCount() + upImgs.size < 100) { const bin = atob(m[2]), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); const id = "p" + rid(); upImgs.set(id, new File([u], "anh." + (m[1].split("/")[1] || "png"), { type: m[1] })); im.setAttribute("src", URL.createObjectURL(upImgs.get(id))); im.setAttribute("data-pend", id); }
+      else if (!/^https?:/i.test(src)) im.remove();
+    });
+    document.execCommand("insertHTML", false, cleanBody(t.innerHTML));
+    if (imgs.length && !t.content.querySelector("img")) addBodyImages(imgs);
+  } else document.execCommand("insertText", false, cd.getData("text/plain"));
+  if (upBodyCount() > MAX_BODY_IMG) toast("Nội dung đang có hơn " + MAX_BODY_IMG + " ảnh — nên bớt ảnh để tải nhanh.", "err");
+}
+async function submitCompose() {
+  const err = m => { $("#upErr").textContent = m; }, msg = t => { $("#upMsg").textContent = t; };
+  const parent = $("#upFolder").value, key = tree[parent] ? tree[parent].cat : "", name = $("#upName").value.trim();
+  if (!parent || !key) return err("Chọn thư mục lưu.");
+  if (!name) { $("#upName").focus(); return err("Nhập tiêu đề."); }
+  const box = $("#upBody").cloneNode(true);
+  if (!box.textContent.trim() && !box.querySelector("img")) { $("#upBody").focus(); return err("Dán hoặc gõ nội dung, hoặc thêm ảnh."); }
+  err(""); const btn = $("#upGo"); btn.disabled = true;
+  try {
+    const pend = [...box.querySelectorAll("img[data-pend]")], imgIds = [];
+    for (let i = 0; i < pend.length; i++) {
+      const f = upImgs.get(pend[i].dataset.pend); if (!f) { pend[i].remove(); continue; }
+      msg(`Đang tải ảnh ${i + 1}/${pend.length}…`);
+      const up = await uploadImage(f, "Anh-noi-dung");
+      pend[i].setAttribute("src", up.url); pend[i].removeAttribute("data-pend"); imgIds.push(up.id);
+    }
+    box.querySelectorAll("img").forEach(im => { if (!/^https?:/i.test(im.getAttribute("src") || "")) im.remove(); });
+    box.querySelectorAll("p,div").forEach(el => { if (!el.textContent.trim() && !el.querySelector("img,table,br")) el.remove(); });
+    const html = cleanBody(box.innerHTML);
+    const tx = box.cloneNode(true); tx.querySelectorAll("p,div,li,td,th,h1,h2,h3,h4,h5,h6,br,tr").forEach(el => el.after(" "));
+    const plain = tx.textContent.replace(/\s+/g, " ").trim();
+    const meta = metaFrom("#up"); const now = new Date().toISOString();
+    let cover = {};
+    if (upCover.file) { msg("Đang tải ảnh của văn bản…"); const cv = await uploadImage(upCover.file, "Bia-tai-lieu"); cover = { coverUrl: cv.url, coverFileId: cv.id }; }
+    else { const first = box.querySelector("img"); if (first) cover = { coverUrl: first.getAttribute("src").replace(/&sz=w\d+/, "&sz=w800"), coverFileId: imgIds[0] || "" }; }
+    const id = "note-" + rid();
+    const it = { id, name, mime: "link", fmime: "text/html", isNote: true, link: "#doc/" + id, cat: key, parent, shared: true, ...meta, access: upLevel,
+      note: meta.note || plain.slice(0, 300), noteContent: html, size: new Blob([html]).size, issued: meta.issued || todayISO(), status: meta.status || "Còn hiệu lực",
+      added: now, modified: now, ...cover, imageIds: imgIds };
+    if (it.star) it.tinAt = now;
+    msg("Đang lưu…");
+    await setDoc(doc(db, "pna_items", id), it); items[id] = it;
+    if (it.star) await syncStar(it);
+    scheduleCatalogSync(); await logAct("NOTE_NEW", name + (imgIds.length ? " · " + imgIds.length + " ảnh" : ""));
+    $("#dlgUpload").close(); upImgs.clear();
+    toast(it.star ? "Đã đăng lên Tin mới." : "Đã lưu nội dung vào thư viện.", "ok");
+    go(it.star ? "" : "f/" + parent);
+  } catch (x) { err(x.message || "Chưa lưu được."); msg(""); }
+  finally { btn.disabled = false; }
+}
+
+function openUpload(folderId, files, mode) {
   if (!can("up")) { openLogin("Loại tài khoản của bạn chưa được quyền tải tài liệu lên."); return; }
   if (!settings) { toast("Chưa có cây thư mục. Quản trị viên bấm “Khởi tạo cây thư mục” trước.", "err"); return; }
   $("#upForm").reset(); $("#upErr").textContent = ""; $("#upMsg").textContent = ""; $("#upAuto").textContent = ""; upFilesSel = []; upCover.reset(); upLevelTouched = false; upAutoFrom = null;
   $("#upMore").open = false;
+  $("#upBody").innerHTML = ""; upImgs.clear(); delete $("#upStar").dataset.touched; upBodyCount();
   $("#upFolder").innerHTML = allFolderOptions();
   $("#nameList").innerHTML = [...new Set(Object.values(items).map(f => cleanName(f.name)))].sort(vi.compare).slice(0, 600).map(n => `<option value="${esc(n)}">`).join("");
   $("#upAccess").innerHTML = LEVELS.filter(l => isAdmin || l.key !== "mat").map(l => `<button type="button" class="lv-btn lv-${l.key}" data-lv="${l.key}">${esc(l.name)}</button>`).join("");
@@ -2636,6 +2748,7 @@ function openUpload(folderId, files) {
   setUpLevel(folderLevel($("#upFolder").value), false);
   $("#upTitle").textContent = "TẢI TÀI LIỆU LÊN";
   if (files && files.length) addUpFiles(files); else renderUpList();
+  setUpMode(mode === "text" ? "text" : "file");
   $("#dlgUpload").showModal();
 }
 function metaFrom(pref) {
@@ -2651,6 +2764,7 @@ const isWebUrl = s => { try { const u = new URL(s); return /^https?:$/.test(u.pr
 const nameFromUrl = s => { try { const u = new URL(s); return (u.hostname.replace(/^www\./, "") + decodeURIComponent(u.pathname.replace(/\/$/, ""))).slice(0, 120); } catch (e) { return s.slice(0, 120); } };
 async function submitUpload(e) {
   e.preventDefault();
+  if (upMode === "text") return submitCompose();
   let parent = $("#upFolder").value; const key = tree[parent] ? tree[parent].cat : "";
   const nameIn = $("#upName").disabled ? "" : $("#upName").value.trim(), newF = $("#upNewFolder").value.trim();
   const meta = { ...metaFrom("#up"), access: upLevel };
@@ -4054,6 +4168,14 @@ dropEl.ondragover = e => { e.preventDefault(); dropEl.classList.add("drag"); };
 dropEl.ondragleave = () => dropEl.classList.remove("drag");
 dropEl.ondrop = e => { e.preventDefault(); dropEl.classList.remove("drag"); const txt = e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain"); if (e.dataTransfer.files.length) addUpFiles(e.dataTransfer.files); else if (txt && isWebUrl(txt.trim().split(/\s+/)[0])) { $("#upLinks").value = ($("#upLinks").value ? $("#upLinks").value + "\n" : "") + txt.trim(); renderUpList(); } };
 $("#upForm").onsubmit = submitUpload;
+document.querySelectorAll("[data-upmode]").forEach(b => b.onclick = () => setUpMode(b.dataset.upmode));
+$("#upBody").addEventListener("paste", bodyPaste);
+$("#upBody").addEventListener("input", upBodyCount);
+$("#upBody").addEventListener("dragover", e => { if ([...e.dataTransfer.types].includes("Files")) { e.preventDefault(); e.stopPropagation(); } });
+$("#upBody").addEventListener("drop", e => { if (e.dataTransfer.files.length) { e.preventDefault(); e.stopPropagation(); addBodyImages(e.dataTransfer.files); } });
+$("#upBodyImg").onchange = e => { addBodyImages(e.target.files); e.target.value = ""; };
+document.querySelectorAll("[data-upcmd]").forEach(b => b.onmousedown = e => { e.preventDefault(); document.execCommand(b.dataset.upcmd); });
+$("#upStar").addEventListener("change", () => { $("#upStar").dataset.touched = "1"; });
 $("#edForm").onsubmit = submitEdit;
 $("#aiForm").onsubmit = askAI;
 $("#aiInput").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#aiForm").requestSubmit(); } });

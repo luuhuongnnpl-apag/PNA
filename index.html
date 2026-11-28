@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@700;900&family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./assets/pna.css?v=20261128v">
+<link rel="stylesheet" href="./assets/pna.css?v=20261128w">
 </head>
 <body>
 <header class="top">
@@ -123,14 +123,24 @@
   <form method="dialog" class="dlg-in" id="upForm" novalidate>
     <h3 id="upTitle">TẢI TÀI LIỆU LÊN</h3>
     <label class="fld"><span>Lưu vào thư mục</span><select id="upFolder"></select></label>
+    <div class="up-mode" role="tablist" aria-label="Cách đưa tài liệu lên">
+      <button type="button" class="on" data-upmode="file" role="tab">📎 Tải tệp / dán đường link</button>
+      <button type="button" data-upmode="text" role="tab">✍ Soạn nội dung, thông báo (dán chữ, ảnh)</button>
+    </div>
+    <div id="upPaneFile">
     <label class="drop" id="drop"><input type="file" id="upFiles" multiple hidden>
       <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M12 16V4m0 0l-4.5 4.5M12 4l4.5 4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       <b>Kéo thả tệp vào đây hoặc bấm để chọn từ máy tính</b><span>Chọn được nhiều tệp cùng lúc, tối đa 50 MB mỗi tệp</span></label>
     <div id="upList" class="up-list"></div>
     <label class="fld"><span>Hoặc dán đường link (Google Drive, trang web) — mỗi dòng một link, có thể ghi <code>Tên | link</code></span><textarea id="upLinks" rows="2" placeholder="https://drive.google.com/file/d/…/view"></textarea></label>
-    <label class="fld"><span>Tên văn bản</span><input id="upName" list="nameList" autocomplete="off"></label>
+    </div>
+    <label class="fld"><span id="upNameLbl">Tên văn bản</span><input id="upName" list="nameList" autocomplete="off"></label>
     <datalist id="nameList"></datalist>
     <p class="hint auto" id="upAuto" aria-live="polite"></p>
+    <div class="fld" id="upPaneText" hidden><span>Nội dung <small class="muted">— dán văn bản từ Word, trang web, Zalo… (giữ đậm, nghiêng, danh sách, bảng) và dán ảnh trực tiếp bằng Ctrl+V; tối đa 10 ảnh</small></span>
+      <div class="up-tools"><label class="btn sm">🖼 Thêm ảnh<input type="file" id="upBodyImg" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden></label><button type="button" class="btn sm" data-upcmd="bold"><b>B</b></button><button type="button" class="btn sm" data-upcmd="italic"><i>I</i></button><button type="button" class="btn sm" data-upcmd="insertUnorderedList">• Danh sách</button><button type="button" class="btn sm" data-upcmd="removeFormat">Xóa định dạng</button><span class="muted" id="upImgN"></span></div>
+      <div id="upBody" class="up-body" contenteditable="true" role="textbox" aria-multiline="true" data-ph="Dán hoặc gõ nội dung thông báo vào đây…"></div>
+    </div>
     <label class="fld"><span>Tóm tắt thông tin <small class="muted">(hiện dưới tiêu đề ở bản tin)</small></span><textarea id="upNote" rows="3" placeholder="Vài câu nêu nội dung chính, đối tượng áp dụng, thời hạn cần lưu ý…"></textarea></label>
     <div class="fld"><span>Ảnh của văn bản <small class="muted">(ảnh đại diện khi đăng tin; để trống: dùng trang đầu của tệp)</small></span>
       <div class="cover-pick" id="upCover" tabindex="0" role="button" aria-label="Chọn ảnh của văn bản">
@@ -291,9 +301,9 @@
 
 <script src="https://accounts.google.com/gsi/client" async></script>
 <script src="./config.js?v=20261128d"></script>
-<script type="module" src="./assets/pna.js?v=20261128v"></script>
-<script type="module" src="./assets/thutuc.js?v=20261128v"></script>
-<script type="module" src="./assets/hoso.js?v=20261128v"></script>
-<script type="module" src="./assets/bocuc.js?v=20261128v"></script>
+<script type="module" src="./assets/pna.js?v=20261128w"></script>
+<script type="module" src="./assets/thutuc.js?v=20261128w"></script>
+<script type="module" src="./assets/hoso.js?v=20261128w"></script>
+<script type="module" src="./assets/bocuc.js?v=20261128w"></script>
 </body>
 </html>
