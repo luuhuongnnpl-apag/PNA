@@ -129,10 +129,16 @@ const PERMS = [
   ["del", "Xóa tài liệu"],
   ["folders", "Tạo, đổi tên, xóa, sắp xếp thư mục; ảnh bìa"],
   ["kho", "Công cụ kho: quét Drive, mở chia sẻ, tạo ảnh bìa"],
-  ["note", "Tạo văn bản ghi chú"],
+  ["note", "Soạn thông báo, văn bản ghi chú"],
   ["ai", "Hỏi trợ lý AI"],
-  ["rec", "Ghi âm cuộc họp"]
+  ["rec", "Ghi âm cuộc họp"],
+  /* Ban quản trị lớp (28/11/2026): quyền áp dụng trong phạm vi lớp của tài khoản (lớp của sinh viên, hoặc "Phạm vi lớp" quản trị gán) */
+  ["hs", "Lớp: xem hồ sơ sinh viên của lớp"],
+  ["pt", "Lớp: xác nhận kê khai phong trào"],
+  ["bbh", "Lớp: lập, ký trình biên bản họp lớp đánh giá rèn luyện"],
+  ["don", "Lớp: xác nhận, ký đơn ở bước Ban cán sự lớp"]
 ];
+const SV_PERMS = ["hs", "pt", "bbh", "don"];
 const MANAGE_PERMS = ["up", "edit", "move", "del", "folders", "kho"];
 const P_ALL = Object.fromEntries(PERMS.map(([k]) => [k, true]));
 const P_READ = { note: true, ai: true, rec: true };
@@ -141,8 +147,10 @@ const ROLES_DEFAULT = {
   "xem-rong":   { name: "Độc giả mở rộng", levels: L3, perms: { ...P_READ } },
   "chuyen-muc": { name: "Người dùng chuyên mục", levels: L3, perms: { ...P_READ, dl: true } },
   "bien-muc":   { name: "Thủ thư / Biên mục", levels: L3, perms: { ...P_ALL } },
-  "cvht":       { name: "Cố vấn học tập", levels: L3, perms: { ...P_READ, dl: true } },
+  "cvht":       { name: "Cố vấn học tập", levels: L3, perms: { ...P_READ, dl: true, up: true, edit: true, hs: true, pt: true, bbh: true, don: true } },
   "sinh-vien":  { name: "Sinh viên", levels: ["cong-khai", "noi-bo"], perms: { ai: true } },
+  "bcs":        { name: "Ban cán sự lớp", levels: L3, perms: { ai: true, note: true, hs: true, pt: true, bbh: true, don: true }, svRole: true },
+  "bch":        { name: "BCH chi đoàn, chi hội", levels: L3, perms: { ai: true, note: true, hs: true, pt: true, bbh: true }, svRole: true },
   "quan-tri":   { name: "Quản trị hệ thống", levels: [...L3, "mat"], perms: { ...P_ALL }, admin: true, fixed: true }
 };
 const GUEST_DEFAULT = { name: "Khách (chưa đăng nhập)", levels: ["cong-khai"], perms: { ...P_READ }, guest: true };
@@ -160,14 +168,15 @@ function applyRoles(saved) {
   for (const k of keys) {
     const d = ROLES_DEFAULT[k] || {}, x = src[k] || {};
     if (k === "quan-tri") { ROLES[k] = decorate({ ...ROLES_DEFAULT[k], name: x.name || d.name }); continue; }
-    ROLES[k] = decorate({ name: x.name || d.name || k, levels: Array.isArray(x.levels) ? x.levels.filter(l => l !== "mat" && LV[l]) : [...(d.levels || ["cong-khai"])], perms: { ...(x.perms || d.perms || {}) }, custom: !ROLES_DEFAULT[k] });
+    const pm = { ...(d.perms || {}) }; Object.entries(x.perms || {}).forEach(([q, v]) => pm[q] = !!v);   // quyền chưa lưu lấy mặc định
+    ROLES[k] = decorate({ name: x.name || d.name || k, levels: Array.isArray(x.levels) ? x.levels.filter(l => l !== "mat" && LV[l]) : [...(d.levels || ["cong-khai"])], perms: Object.fromEntries(Object.entries(x.perms ? pm : (d.perms || {})).filter(([, v]) => v)), custom: !ROLES_DEFAULT[k], svRole: !!d.svRole });
   }
   const g = src.khach || {};
   GUEST = decorate({ ...GUEST_DEFAULT, perms: { ...(g.perms || GUEST_DEFAULT.perms) }, levels: ["cong-khai"] });
-  ["dl", ...MANAGE_PERMS].forEach(k => delete GUEST.perms[k]); decorate(GUEST);
+  ["dl", ...MANAGE_PERMS, ...SV_PERMS].forEach(k => delete GUEST.perms[k]); decorate(GUEST);
 }
 applyRoles(null);
-const DEFAULT_LEVEL = "noi-bo";
+const DEFAULT_LEVEL = "cong-khai";   // 28/11/2026: toàn bộ tài liệu công khai; thông tin sinh viên bảo vệ ở hồ sơ, đơn
 const grantOk = g => !!g && !g.disabled && (!g.han || g.han >= todayISO());
 function myGrant() {
   if (isAdmin) return { role: "quan-tri", cats: ["*"] };
@@ -2903,7 +2912,7 @@ function matrixHTML() {
   const cols = [["khach", GUEST], ...Object.entries(ROLES)];
   const head = cols.map(([k, r]) => `<th class="rl-col">${k === "quan-tri" || k === "khach" ? `<b>${esc(r.name)}</b>` : `<input class="rl-name" data-rk="${esc(k)}" value="${esc(r.name)}" maxlength="40" title="Tên loại tài khoản">`}${r.custom ? `<button type="button" class="linkish rl-del" data-rldel="${esc(k)}" title="Xóa loại tài khoản này">Xóa</button>` : ""}</th>`).join("");
   const cell = (k, r, kind, key) => {
-    const fixed = k === "quan-tri" || (k === "khach" && (kind === "lv" || ["dl", ...MANAGE_PERMS].includes(key))) || (kind === "lv" && key === "mat");
+    const fixed = k === "quan-tri" || (k === "khach" && (kind === "lv" || ["dl", ...MANAGE_PERMS, ...SV_PERMS].includes(key))) || (kind === "lv" && key === "mat");
     const on = kind === "lv" ? (r.levels || []).includes(key) : !!(r.perms && r.perms[key]);
     return `<td class="c"><input type="checkbox" data-rk="${esc(k)}" data-${kind}="${esc(key)}"${on ? " checked" : ""}${fixed ? " disabled" : ""}></td>`;
   };
@@ -2924,7 +2933,7 @@ function rolesFromTable() {
     const r = k === "khach" ? GUEST : ROLES[k];
     const nameEl = box.querySelector(`.rl-name[data-rk="${CSS.escape(k)}"]`);
     const levels = [...box.querySelectorAll(`input[data-rk="${CSS.escape(k)}"][data-lv]`)].filter(x => x.checked).map(x => x.dataset.lv);
-    const perms = {}; box.querySelectorAll(`input[data-rk="${CSS.escape(k)}"][data-pm]`).forEach(x => { if (x.checked) perms[x.dataset.pm] = true; });
+    const perms = {}; box.querySelectorAll(`input[data-rk="${CSS.escape(k)}"][data-pm]`).forEach(x => { perms[x.dataset.pm] = x.checked; });
     out[k] = { name: (nameEl ? nameEl.value.trim() : r.name) || r.name, levels: k === "quan-tri" ? [...L3, "mat"] : levels, perms: k === "quan-tri" ? { ...P_ALL } : perms };
   }
   return out;
@@ -2982,6 +2991,7 @@ async function renderAccounts() {
         <label class="fld"><span>Mật khẩu khởi tạo <small class="muted">(để trống nếu chỉ đăng nhập bằng Google)</small></span><input id="acPass" type="text" autocomplete="new-password" placeholder="Ít nhất 6 ký tự"></label>
         <label class="fld"><span>Họ và tên *</span><input id="acName" maxlength="80"></label>
         <label class="fld"><span>Đơn vị / đối tượng</span><input id="acUnit" maxlength="80" placeholder="Ví dụ: Khoa Luật — Lớp LKT K12"></label>
+        <label class="fld"><span>Phạm vi lớp <small class="muted">(mã lớp, cách nhau dấu phẩy — cho quyền "Lớp: …"; sinh viên tự theo lớp của mình)</small></span><input id="acLops" maxlength="200" placeholder="Ví dụ: 2505TTRA, 2405TTRB"></label>
         <label class="fld"><span>Vai trò</span><select id="acRole">${roleOpts("xem")}</select></label>
         <label class="fld"><span>Hạn sử dụng <small class="muted">(để trống: không giới hạn)</small></span><input id="acHan" type="date"></label>
       </div>
@@ -3031,13 +3041,13 @@ async function renderAccounts() {
       $("#acCount").textContent = AC.length ? "(" + AC.length + ")" : "";
       $("#acBody").innerHTML = AC.length ? AC.map(x => {
         const st = x.disabled ? '<span class="badge bad">Đã khóa</span>' : x.han && todayISO() > x.han ? '<span class="badge bad">Hết hạn</span>' : '<span class="badge ok">Hoạt động</span>';
-        return `<tr><td><b>${esc(showName(x.id))}</b><br><span class="muted">${x.login === "google" ? "Đăng nhập Google" : "Tên đăng nhập + mật khẩu"}</span></td><td>${esc(x.name || "")}<br><span class="muted">${esc(x.unit || "")}</span></td><td>${esc((ROLES[x.role] || {}).name || x.role)}</td><td>${esc(x.role === "quan-tri" ? "Tất cả" : catsText(x.cats))}</td><td>${x.han ? fmtDate(x.han) : "—"}</td><td>${st}</td>
+        return `<tr><td><b>${esc(showName(x.id))}</b><br><span class="muted">${x.login === "google" ? "Đăng nhập Google" : "Tên đăng nhập + mật khẩu"}</span></td><td>${esc(x.name || "")}<br><span class="muted">${esc(x.unit || "")}${(x.lops || []).length ? " · Lớp " + esc(x.lops.join(", ")) : ""}</span></td><td>${esc((ROLES[x.role] || {}).name || x.role)}</td><td>${esc(x.role === "quan-tri" ? "Tất cả" : catsText(x.cats))}</td><td>${x.han ? fmtDate(x.han) : "—"}</td><td>${st}</td>
           <td style="white-space:nowrap"><button type="button" class="btn sm" data-acedit="${esc(x.id)}">Sửa</button> ${x.id.endsWith("@" + ACCT_DOMAIN) ? `<button type="button" class="btn sm" data-acpw="${esc(x.id)}">Đặt lại mật khẩu</button> ` : ""}<button type="button" class="btn sm" data-aclock="${esc(x.id)}">${x.disabled ? "Mở khóa" : "Khóa"}</button> <button type="button" class="btn sm" data-acdel="${esc(x.id)}">Xóa</button></td></tr>`;
       }).join("") : '<tr><td colspan="7" class="muted">Chưa có tài khoản nào.</td></tr>';
       $("#acBody").querySelectorAll("[data-acedit]").forEach(b => b.onclick = () => {
         const x = AC.find(y => y.id === b.dataset.acedit); AC_EDIT = x.id;
         $("#acUser").value = showName(x.id); $("#acUser").readOnly = true; $("#acPass").value = ""; $("#acPass").placeholder = x.id.endsWith("@" + ACCT_DOMAIN) ? "Để trống nếu không đổi; nhập mật khẩu mới để đặt lại" : "Tài khoản Google — không có mật khẩu";
-        $("#acName").value = x.name || ""; $("#acUnit").value = x.unit || ""; $("#acRole").value = x.role || "xem"; $("#acHan").value = x.han || ""; acCats.set(x.cats);
+        $("#acName").value = x.name || ""; $("#acUnit").value = x.unit || ""; $("#acLops").value = (x.lops || []).join(", "); $("#acRole").value = x.role || "xem"; $("#acHan").value = x.han || ""; acCats.set(x.cats);
         $("#acGo").textContent = "Lưu thay đổi"; $("#acCancel").hidden = false; showRole(); $("#acForm").scrollIntoView({ behavior: "smooth" });
       });
       $("#acBody").querySelectorAll("[data-acpw]").forEach(b => b.onclick = () => pwResetDialog(b.dataset.acpw, (AC.find(y => y.id === b.dataset.acpw) || {}).name || "", "", () => acList()));
@@ -3082,7 +3092,8 @@ async function renderAccounts() {
           else throw x;
         }
       }
-      const data = { email, username: showName(email), name, unit, role, cats, han: han || "", hanTs: han ? Timestamp.fromDate(new Date(han + "T23:59:59+07:00")) : null, login: pw || (AC_EDIT && (AC.find(x => x.id === AC_EDIT) || {}).login === "matkhau") ? "matkhau" : "google", ...(AC_EDIT ? { updated: new Date().toISOString() } : { created: new Date().toISOString(), by: user && user.email || "", disabled: false }) };
+      const lops = ($("#acLops").value || "").split(/[,;\s]+/).map(x => x.trim().toUpperCase()).filter(Boolean);
+      const data = { email, username: showName(email), name, unit, lops, role, cats, han: han || "", hanTs: han ? Timestamp.fromDate(new Date(han + "T23:59:59+07:00")) : null, login: pw || (AC_EDIT && (AC.find(x => x.id === AC_EDIT) || {}).login === "matkhau") ? "matkhau" : "google", ...(AC_EDIT ? { updated: new Date().toISOString() } : { created: new Date().toISOString(), by: user && user.email || "", disabled: false }) };
       await setDoc(doc(db, "pna_accounts", email), data, { merge: !!AC_EDIT });
       if (AC_EDIT && pw) { await requestPwReset(email, pw, "Quản trị đặt lại khi sửa tài khoản"); notes.push("Đã gửi yêu cầu đặt lại mật khẩu; hệ thống áp dụng trong khoảng 5–15 phút (xem trạng thái ở cột Tài khoản)."); }
       if (!AC_EDIT && $("#acDrive").checked && !$("#acDriveWrap").hidden && settings && settings.rootId) {
@@ -4271,7 +4282,7 @@ async function pwResetStatus(email) {
 }
 /* Cầu nối cho các phân hệ (Thủ tục sinh viên…) */
 window.PNA = {
-  app, db, auth, esc, toast, ask, go, logAct, toEmail, showName, createAuthUser, ACCT_DOMAIN, requestPwReset, pwResetStatus, pwResetDialog, pwStText,
+  app, db, auth, esc, toast, ask, go, logAct, toEmail, showName, createAuthUser, ACCT_DOMAIN, can, ROLES_OF: () => ROLES, requestPwReset, pwResetStatus, pwResetDialog, pwStText,
   get user() { return user; }, get isAdmin() { return isAdmin; }, get acct() { return acct; }, get authReady() { return authReady; },
   route: () => route()
 };

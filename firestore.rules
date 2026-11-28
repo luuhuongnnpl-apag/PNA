@@ -28,10 +28,11 @@ service cloud.firestore {
     function ndPath() { return /databases/$(database)/documents/pna_tt_settings/nguoiduyet; }
     function inNd(k) { return signedIn() && email() != '' && exists(ndPath()) && me() in get(ndPath()).data.get(k, []); }
     function lopCvht(l) { return get(/databases/$(database)/documents/pna_lop/$(l)).data.get('cvht', []); }
-    function donReader(d) { return isAdmin() || d.sv.email == me() || me() in d.cvht || inNd('khoa') || inNd('qldt'); }
+    function donReader(d) { return isAdmin() || d.sv.email == me() || me() in d.cvht || inNd('khoa') || inNd('qldt') || bqt(d.lop, 'don'); }
     function donActor(d) {
       return d.status == 'cho-duyet' && (isAdmin()
         || (d.stepRole == 'cvht' && me() in d.cvht)
+        || (d.stepRole == 'bcs' && bqt(d.lop, 'don') && d.sv.email != me())
         || (d.stepRole in ['khoa', 'qldt'] && inNd(d.stepRole)));
     }
     function stepOk(n) { return n.status != 'cho-duyet' || (n.step < n.steps.size() && n.stepRole == n.steps[n.step].role); }
@@ -50,9 +51,18 @@ service cloud.firestore {
            : (d != null && d.get('levels', null) != null) ? d.levels.removeAll(['mat'])
            : levelsOld(role);
     }
+    // Quyền mặc định theo loại (khớp ROLES_DEFAULT trong assets/pna.js); quyền đã lưu ở pna_settings/roles được ưu tiên
+    function defPerms(role) {
+      return {
+        'xem': ['note', 'ai', 'rec'], 'xem-rong': ['note', 'ai', 'rec'], 'chuyen-muc': ['note', 'ai', 'rec', 'dl'],
+        'bien-muc': ['dl', 'up', 'edit', 'move', 'del', 'folders', 'kho', 'note', 'ai', 'rec'],
+        'cvht': ['note', 'ai', 'rec', 'dl', 'up', 'edit', 'hs', 'pt', 'bbh', 'don'], 'sinh-vien': ['ai'],
+        'bcs': ['ai', 'note', 'hs', 'pt', 'bbh', 'don'], 'bch': ['ai', 'note', 'hs', 'pt', 'bbh']
+      }.get(role, []);
+    }
     function perm(role, p) {
       let d = roleDef(role);
-      return role == 'quan-tri' || (d != null ? d.get('perms', {}).get(p, false) == true : role == 'bien-muc');
+      return role == 'quan-tri' || ((d != null && d.get('perms', {}).keys().hasAny([p])) ? d.perms[p] == true : p in defPerms(role));
     }
     function can(p) { return isAdmin() || (acctOk() && perm(acct().role, p)); }
     function isManager() {
@@ -94,9 +104,11 @@ service cloud.firestore {
     match /pna_accounts/{em} {
       allow get: if signedIn() && (email().lower() == em || isAdmin());
       allow list, write: if isAdmin();
-      allow create: if isCvht() && request.resource.data.role == 'sinh-vien';
-      allow update: if isCvht() && resource.data.role == 'sinh-vien' && request.resource.data.role == 'sinh-vien';
-      allow delete: if isCvht() && resource.data.role == 'sinh-vien';
+      // cố vấn học tập cấp tài khoản sinh viên và giao vai trò ban cán sự, BCH (lops không được tự đặt)
+      allow create: if isCvht() && request.resource.data.role in ['sinh-vien', 'bcs', 'bch'] && request.resource.data.get('lops', []).size() == 0;
+      allow update: if isCvht() && resource.data.role in ['sinh-vien', 'bcs', 'bch'] && request.resource.data.role in ['sinh-vien', 'bcs', 'bch']
+        && request.resource.data.get('lops', []).size() == 0;
+      allow delete: if isCvht() && resource.data.role in ['sinh-vien', 'bcs', 'bch'];
     }
 
     // Mã truy cập dùng chung
@@ -170,10 +182,13 @@ service cloud.firestore {
     function ownHoso(id) { return isSv() && get(svPath()).data.mssv == id; }
     // Ban cán sự lớp: sinh viên có chức vụ trong hồ sơ, cùng lớp
     function myHoso() { return get(/databases/$(database)/documents/pna_hoso/$(get(svPath()).data.mssv)).data; }
-    function isBcsOf(lop) { return isSv() && myHoso().lop == lop && myHoso().get('chucVu', '') != ''; }
+    // Ban quản trị lớp: tài khoản có quyền p (hs, pt, bbh, don) trong phạm vi lớp — lớp của sinh viên hoặc "lops" quản trị gán
+    function myLops() { return (isSv() ? [get(svPath()).data.lop] : []).concat(acct().get('lops', [])); }
+    function bqt(lop, p) { return acctOk() && perm(acct().role, p) && lop in myLops(); }
+    function isBcsOf(lop) { return bqt(lop, 'bbh') || bqt(lop, 'pt'); }
     match /pna_hoso/{id} {
-      allow get: if signedIn() && (isAdmin() || inNd('khoa') || me() in resource.data.get('cvht', []) || ownHoso(id));
-      allow list: if signedIn() && (isAdmin() || inNd('khoa') || me() in resource.data.get('cvht', []));
+      allow get: if signedIn() && (isAdmin() || inNd('khoa') || me() in resource.data.get('cvht', []) || ownHoso(id) || bqt(resource.data.lop, 'hs'));
+      allow list: if signedIn() && (isAdmin() || inNd('khoa') || me() in resource.data.get('cvht', []) || bqt(resource.data.lop, 'hs'));
       allow create, delete: if isAdmin();
       allow update: if isAdmin() || (me() in resource.data.get('cvht', [])
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['trangThai', 'sdt', 'emailLienHe', 'queQuan', 'chucVu', 'chucVuNam', 'suKien', 'drl', 'email', 'hocTap', 'updated', 'by']))
@@ -181,22 +196,22 @@ service cloud.firestore {
         || (ownHoso(id) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hocTap', 'drlTu', 'updated', 'by']));
       // Phong trào: sinh viên kê khai; ban cán sự cùng lớp hoặc CVHT xác nhận
       match /hoatdong/{a} {
-        allow read: if signedIn() && (isAdmin() || inNd('khoa') || me() in get(/databases/$(database)/documents/pna_hoso/$(id)).data.get('cvht', []) || ownHoso(id) || isBcsOf(get(/databases/$(database)/documents/pna_hoso/$(id)).data.lop));
+        allow read: if signedIn() && (isAdmin() || inNd('khoa') || me() in get(/databases/$(database)/documents/pna_hoso/$(id)).data.get('cvht', []) || ownHoso(id) || bqt(get(/databases/$(database)/documents/pna_hoso/$(id)).data.lop, 'pt') || bqt(get(/databases/$(database)/documents/pna_hoso/$(id)).data.lop, 'hs'));
         allow create: if ownHoso(id) && request.resource.data.tt == 'cho' && request.resource.data.mssv == id
           && request.resource.data.lop == get(/databases/$(database)/documents/pna_hoso/$(id)).data.lop;
         allow update: if (ownHoso(id) && resource.data.tt != 'ok' && request.resource.data.tt == 'cho' && request.resource.data.mssv == id && request.resource.data.lop == resource.data.lop)
-          || ((isAdmin() || me() in resource.data.get('cvht', []) || (isBcsOf(resource.data.lop) && !ownHoso(id)))
+          || ((isAdmin() || me() in resource.data.get('cvht', []) || (bqt(resource.data.lop, 'pt') && !ownHoso(id)))
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tt', 'xn']));
         allow delete: if isAdmin() || me() in resource.data.get('cvht', []) || (ownHoso(id) && resource.data.tt != 'ok');
       }
       // Minh chứng rèn luyện, phong trào: thông tin tệp (minhchung) và nội dung (mcdata); sinh viên tải lên, cán bộ và BCS cùng lớp xem
       match /minhchung/{m} {
-        allow read: if signedIn() && (isAdmin() || inNd('khoa') || ownHoso(id) || me() in get(/databases/$(database)/documents/pna_hoso/$(id)).data.get('cvht', []) || isBcsOf(get(/databases/$(database)/documents/pna_hoso/$(id)).data.lop));
+        allow read: if signedIn() && (isAdmin() || inNd('khoa') || ownHoso(id) || me() in get(/databases/$(database)/documents/pna_hoso/$(id)).data.get('cvht', []) || bqt(get(/databases/$(database)/documents/pna_hoso/$(id)).data.lop, 'pt') || bqt(get(/databases/$(database)/documents/pna_hoso/$(id)).data.lop, 'hs'));
         allow create: if ownHoso(id) && request.resource.data.by == me();
         allow delete: if ownHoso(id) || isAdmin() || me() in get(/databases/$(database)/documents/pna_hoso/$(id)).data.get('cvht', []);
       }
       match /mcdata/{m} {
-        allow read: if signedIn() && (isAdmin() || inNd('khoa') || ownHoso(id) || me() in get(/databases/$(database)/documents/pna_hoso/$(id)).data.get('cvht', []) || isBcsOf(get(/databases/$(database)/documents/pna_hoso/$(id)).data.lop));
+        allow read: if signedIn() && (isAdmin() || inNd('khoa') || ownHoso(id) || me() in get(/databases/$(database)/documents/pna_hoso/$(id)).data.get('cvht', []) || bqt(get(/databases/$(database)/documents/pna_hoso/$(id)).data.lop, 'pt') || bqt(get(/databases/$(database)/documents/pna_hoso/$(id)).data.lop, 'hs'));
         allow create: if ownHoso(id) && request.resource.data.by == me();
         allow delete: if ownHoso(id) || isAdmin() || me() in get(/databases/$(database)/documents/pna_hoso/$(id)).data.get('cvht', []);
       }
@@ -208,14 +223,14 @@ service cloud.firestore {
     }
     // Truy vấn chung kê khai phong trào (ban cán sự, CVHT xem kê khai chờ xác nhận của lớp)
     match /{path=**}/hoatdong/{a} {
-      allow read: if signedIn() && (isAdmin() || inNd('khoa') || me() in resource.data.get('cvht', []) || isBcsOf(resource.data.lop) || (isSv() && resource.data.mssv == get(svPath()).data.mssv));
+      allow read: if signedIn() && (isAdmin() || inNd('khoa') || me() in resource.data.get('cvht', []) || bqt(resource.data.lop, 'pt') || (isSv() && resource.data.mssv == get(svPath()).data.mssv));
     }
     match /pna_ctdt/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
 
     // Phiếu tự đánh giá rèn luyện (bản tóm tắt để ban cán sự, CVHT tổng hợp biên bản họp lớp)
     function mySvDoc() { return get(svPath()).data; }
     match /pna_drl_phieu/{p} {
-      allow read: if signedIn() && (isAdmin() || inNd('khoa') || me() in lopCvht(resource.data.lop) || isBcsOf(resource.data.lop)
+      allow read: if signedIn() && (isAdmin() || inNd('khoa') || me() in lopCvht(resource.data.lop) || bqt(resource.data.lop, 'bbh') || bqt(resource.data.lop, 'hs')
         || (isSv() && resource.data.mssv == mySvDoc().mssv));
       allow create, update: if (isSv() && request.resource.data.mssv == mySvDoc().mssv && request.resource.data.lop == mySvDoc().lop)
         || isAdmin() || me() in lopCvht(request.resource.data.lop);
@@ -223,11 +238,11 @@ service cloud.firestore {
     }
     // Biên bản họp lớp đánh giá rèn luyện: BCS/BCH lập, ký trình; CVHT ký, chốt
     match /pna_bbh/{b} {
-      allow read: if signedIn() && (isAdmin() || inNd('khoa') || me() in lopCvht(resource.data.lop) || isBcsOf(resource.data.lop));
+      allow read: if signedIn() && (isAdmin() || inNd('khoa') || me() in lopCvht(resource.data.lop) || bqt(resource.data.lop, 'bbh'));
       allow create: if isAdmin() || me() in lopCvht(request.resource.data.lop)
-        || (isBcsOf(request.resource.data.lop) && request.resource.data.tt in ['nhap', 'trinh']);
+        || (bqt(request.resource.data.lop, 'bbh') && request.resource.data.tt in ['nhap', 'trinh']);
       allow update: if isAdmin() || me() in lopCvht(resource.data.lop)
-        || (isBcsOf(resource.data.lop) && resource.data.get('tt', 'nhap') in ['nhap', 'tra-lai'] && request.resource.data.tt in ['nhap', 'trinh']
+        || (bqt(resource.data.lop, 'bbh') && resource.data.get('tt', 'nhap') in ['nhap', 'tra-lai'] && request.resource.data.tt in ['nhap', 'trinh']
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hop', 'rows', 'tt', 'lt', 'updated', 'by']));
       allow delete: if isAdmin();
     }

@@ -113,6 +113,12 @@ async function chanDoan(data) {
       if (r.ok && !process.env.FAKE_DB) { const { getAuth } = await import("firebase-admin/auth"); await getAuth().deleteUser(j.localId); out.push("Đã xóa tài khoản thử."); }
     } catch (e) { out.push("Tạo tài khoản thử: lỗi gọi " + e.message); }
   }
+  if ((data.viec || []).includes("cong-khai-tat-ca")) {
+    // 28/11/2026: toàn bộ tài liệu, thư mục chuyển mức Công khai (giữ nguyên mục Mật)
+    const w = [];
+    for (const c of ["pna_items", "pna_catalog", "pna_tree"]) (await db.collection(c).get()).forEach(d => { const x = d.data(); if (x.access !== "mat" && x.access !== "cong-khai" && !(c === "pna_tree" && !x.access && x.parent)) w.push([d.ref, { access: "cong-khai" }, true]); });
+    await commitAll(w); out.push(`Chuyển Công khai: ${w.length} tài liệu/thư mục`);
+  }
   if ((data.viec || []).includes("dem")) {
     const cnt = async c => { let n = 0; (await db.collection(c).get()).forEach(() => n++); return n; };
     out.push(`Đếm: pna_accounts ${await cnt("pna_accounts")}, pna_sv ${await cnt("pna_sv")}, pna_hoso ${await cnt("pna_hoso")}, pna_lop ${await cnt("pna_lop")}, pna_ctdt ${await cnt("pna_ctdt")}`);

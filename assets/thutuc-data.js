@@ -15,6 +15,7 @@ export const HV = "Học viện Hành chính và Quản trị công";
 export const KHOA_QL = "Khoa Luật";
 
 export const STEP_ROLES = {
+  bcs: { name: "Ban cán sự lớp", act: "Xác nhận", sign: "XÁC NHẬN CỦA BAN CÁN SỰ LỚP" },
   cvht: { name: "Cố vấn học tập", act: "Xác nhận", sign: "XÁC NHẬN CỦA CỐ VẤN HỌC TẬP" },
   khoa: { name: "Lãnh đạo Khoa", act: "Duyệt", sign: "Ý KIẾN CỦA LÃNH ĐẠO KHOA" },
   qldt: { name: "Ban Quản lý đào tạo", act: "Tiếp nhận", sign: "TIẾP NHẬN CỦA BAN QUẢN LÝ ĐÀO TẠO" }

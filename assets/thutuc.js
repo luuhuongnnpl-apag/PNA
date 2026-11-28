@@ -8,7 +8,7 @@
    không thay thế chữ ký số do tổ chức cung cấp dịch vụ chứng thực cấp. Có ô gắn bản PDF đã ký số.
    ===================================================================== */
 import { doc, getDoc, setDoc, updateDoc, addDoc, deleteDoc, collection, getDocs, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
-import { THU_TUC, STEP_ROLES, TT_VER, HV, KHOA_QL, MAU_QC } from "./thutuc-data.js?v=20261128x";
+import { THU_TUC, STEP_ROLES, TT_VER, HV, KHOA_QL, MAU_QC } from "./thutuc-data.js?v=20261128y";
 
 const P = window.PNA;
 const db = P.db, esc = P.esc;
@@ -34,7 +34,9 @@ const isAdmin = () => P.isAdmin;
 const isCvhtRole = () => !!(P.acct && P.acct.role === "cvht" && !P.acct.disabled);
 const isCvht = () => isCvhtRole() || ME.lops.length > 0;
 const ndRoles = () => ["khoa", "qldt"].filter(k => (ND[k] || []).includes(myEmail()));
-const isApprover = () => isAdmin() || isCvht() || ndRoles().length > 0;
+const myLops = () => [...(ME && ME.sv ? [ME.sv.lop] : []), ...((P.acct && P.acct.lops) || [])];
+const isBcsDon = () => !!(P.can && P.can("don")) && myLops().length > 0;
+const isApprover = () => isAdmin() || isCvht() || ndRoles().length > 0 || isBcsDon();
 const ttOf = key => (CFG || THU_TUC).find(t => t.key === key);
 const fmtDT = s => { if (!s) return ""; const d = new Date(s); return isNaN(d) ? String(s) : d.toLocaleDateString("vi-VN") + " " + d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }); };
 const fmtD = s => { if (!s) return ""; const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); return m ? `${m[3]}/${m[2]}/${m[1]}` : String(s); };
@@ -72,13 +74,17 @@ async function loadNow() {
 function mustAct(d) {
   if (d.status !== "cho-duyet") return false;
   if (d.stepRole === "cvht") return (d.cvht || []).includes(myEmail()) || isAdmin();
+  if (d.stepRole === "bcs") return (isBcsDon() && myLops().includes(d.lop) && (d.sv || {}).email !== myEmail()) || isAdmin();
   return ndRoles().includes(d.stepRole) || isAdmin();
 }
 async function fetchDons(kind) {
   const out = {}, put = snap => snap.forEach(x => out[x.id] = { id: x.id, ...x.data() });
   if (kind === "cua-toi") { put(await getDocs(query(collection(db, "pna_don"), where("sv.email", "==", myEmail())))); }
   else if (isAdmin() || ndRoles().length) put(await getDocs(collection(db, "pna_don")));
-  else if (isCvht()) put(await getDocs(query(collection(db, "pna_don"), where("cvht", "array-contains", myEmail()))));
+  else {
+    if (isCvht()) put(await getDocs(query(collection(db, "pna_don"), where("cvht", "array-contains", myEmail()))));
+    if (isBcsDon()) for (const l of myLops()) { try { put(await getDocs(query(collection(db, "pna_don"), where("lop", "==", l)))); } catch (e) {} }
+  }
   return Object.values(out).sort((a, b) => String(b.updated || b.created).localeCompare(String(a.updated || a.created)));
 }
 
@@ -500,6 +506,7 @@ function parseDate(s) {
   if ((m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s))) return s;
   return "";
 }
+const SV_VT = [["sinh-vien", () => "Sinh viên"], ["bcs", () => ((P.ROLES_OF && P.ROLES_OF().bcs) || {}).name || "Ban cán sự lớp"], ["bch", () => ((P.ROLES_OF && P.ROLES_OF().bch) || {}).name || "BCH chi đoàn, chi hội"]];
 const pwFrom = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ""); return m ? m[3] + m[2] + m[1] : Math.random().toString(36).slice(2, 10); };
 async function renderLop(sel) {
   if (!isCvht() && !isAdmin()) return page("Lớp & tài khoản sinh viên", `<p class="empty">Chỉ cố vấn học tập và quản trị viên dùng chức năng này.</p>`);
@@ -530,13 +537,23 @@ async function renderLop(sel) {
       <textarea id="svPaste" rows="5" class="fld-sel" placeholder="2601LHOA001	Nguyễn Văn An	05/09/2008	0912345678"></textarea>
       <div class="dlg-act" style="justify-content:flex-start"><button type="button" class="btn primary" id="svCreate">Cấp tài khoản</button></div>
       <p class="err" id="svErr"></p><div id="svOut"></div></details>
-    <div class="tbl-wrap"><table class="adm-table ftbl"><thead><tr><th>Mã SV</th><th>Họ và tên</th><th>Ngày sinh</th><th>Điện thoại</th><th>Đăng nhập bằng</th><th></th></tr></thead><tbody>
-    ${svs.map(s => `<tr><td><b>${esc(s.mssv)}</b></td><td>${esc(s.hoTen)}</td><td>${esc(fmtD(s.ngaySinh))}</td><td>${esc(s.sdt || "")}</td><td>${esc(P.showName(s.id))}${s.id.endsWith("@" + P.ACCT_DOMAIN) ? "" : " <small class=\"muted\">(Google)</small>"}<span class="pw-st" data-pwst="${esc(s.id)}"></span></td><td style="white-space:nowrap"><button type="button" class="btn sm" data-svedit="${esc(s.id)}">✎ Sửa</button> ${s.id.endsWith("@" + P.ACCT_DOMAIN) ? `<button type="button" class="btn sm" data-svpw="${esc(s.id)}">Đặt lại mật khẩu</button> ` : ""}<button type="button" class="btn sm" data-svdel="${esc(s.id)}">Xóa</button></td></tr>`).join("") || `<tr><td colspan="6" class="muted">Chưa có sinh viên.</td></tr>`}
+    <p class="muted">Cột <b>Vai trò</b>: chọn Ban cán sự lớp hoặc BCH chi đoàn, chi hội để giao quyền trong phạm vi lớp (xem hồ sơ lớp, xác nhận phong trào, lập và ký trình biên bản họp lớp, xác nhận đơn ở bước Ban cán sự, soạn thông báo). Mức quyền từng vai trò do quản trị viên đặt ở <a href="#tai-khoan">Tài khoản & phân quyền</a>.</p>
+    <div class="tbl-wrap"><table class="adm-table ftbl"><thead><tr><th>Mã SV</th><th>Họ và tên</th><th>Ngày sinh</th><th>Điện thoại</th><th>Đăng nhập bằng</th><th>Vai trò (ban quản trị lớp)</th><th></th></tr></thead><tbody>
+    ${svs.map(s => `<tr><td><b>${esc(s.mssv)}</b></td><td>${esc(s.hoTen)}</td><td>${esc(fmtD(s.ngaySinh))}</td><td>${esc(s.sdt || "")}</td><td>${esc(P.showName(s.id))}${s.id.endsWith("@" + P.ACCT_DOMAIN) ? "" : " <small class=\"muted\">(Google)</small>"}<span class="pw-st" data-pwst="${esc(s.id)}"></span></td><td><select class="fld-sel sv-vt" data-svvt="${esc(s.id)}" style="width:auto">${SV_VT.map(([k, n]) => `<option value="${k}"${(s.vaiTro || "sinh-vien") === k ? " selected" : ""}>${esc(n())}</option>`).join("")}</select></td><td style="white-space:nowrap"><button type="button" class="btn sm" data-svedit="${esc(s.id)}">✎ Sửa</button> ${s.id.endsWith("@" + P.ACCT_DOMAIN) ? `<button type="button" class="btn sm" data-svpw="${esc(s.id)}">Đặt lại mật khẩu</button> ` : ""}<button type="button" class="btn sm" data-svdel="${esc(s.id)}">Xóa</button></td></tr>`).join("") || `<tr><td colspan="7" class="muted">Chưa có sinh viên.</td></tr>`}
     </tbody></table></div>`);
   bindLop(lops);
   $("#lopSel").onchange = e => go("tt-lop/" + e.target.value);
   /* Danh sách chuyển sang từ trang lớp của Hồ sơ sinh viên */
   try { const pf = JSON.parse(sessionStorage.getItem("pna_sv_prefill") || "null"); if (pf && pf.lop === cur.id) { $("#svPaste").value = pf.text; sessionStorage.removeItem("pna_sv_prefill"); $("#svPaste").scrollIntoView({ block: "center" }); } } catch (e) {}
+  /* Giao vai trò ban quản trị lớp (ban cán sự, BCH chi đoàn) — quyền cụ thể theo bảng phân quyền */
+  document.querySelectorAll("[data-svvt]").forEach(sel => sel.onchange = async () => {
+    const s = svs.find(x => x.id === sel.dataset.svvt); if (!s) return; const vt = sel.value, at = new Date().toISOString();
+    try {
+      await setDoc(doc(db, "pna_accounts", s.id), { role: vt, name: s.hoTen, updated: at }, { merge: true });
+      await setDoc(doc(db, "pna_sv", s.id), { vaiTro: vt, cvht: cur.cvht || [], lop: cur.id, updated: at, by: myEmail() }, { merge: true });
+      s.vaiTro = vt; P.logAct("SV_ROLE", s.mssv + " → " + vt); P.toast(s.hoTen + ": " + sel.selectedOptions[0].textContent + ".", "ok");
+    } catch (e) { P.toast("Chưa đổi được vai trò: " + e.message, "err"); sel.value = s.vaiTro || "sinh-vien"; }
+  });
   /* Sửa thông tin tài khoản sinh viên, đặt lại mật khẩu khi sinh viên quên */
   P.pwResetStatus().then(rs => { const last = {}; rs.forEach(r => { if (!last[r.email]) last[r.email] = r; });
     document.querySelectorAll("[data-pwst]").forEach(x => { const r = last[x.dataset.pwst]; if (r) x.innerHTML = `<br><small class="${r.tt === "loi" ? "err" : "muted"}">${P.pwStText(r)}</small>`; }); });
@@ -564,7 +581,7 @@ async function renderLop(sel) {
       try {
         const at = new Date().toISOString();
         await setDoc(doc(db, "pna_sv", s.id), { hoTen, ngaySinh, sdt, cvht: cur.cvht || [], lop: cur.id, updated: at, by: myEmail() }, { merge: true });
-        try { await setDoc(doc(db, "pna_accounts", s.id), { role: "sinh-vien", name: hoTen, updated: at }, { merge: true }); } catch (x) {}
+        try { await setDoc(doc(db, "pna_accounts", s.id), { role: s.vaiTro || "sinh-vien", name: hoTen, updated: at }, { merge: true }); } catch (x) {}
         if (sdt !== (s.sdt || "")) { try { await setDoc(doc(db, "pna_hoso", s.mssv), { sdt, updated: at, by: myEmail() }, { merge: true }); } catch (x) {} }
         let msg = "Đã lưu thông tin " + hoTen + ".";
         if (on && on.checked) { await P.requestPwReset(s.id, dl.querySelector("#sePw").value.trim(), "CVHT đặt lại"); msg += " Đã gửi yêu cầu đặt lại mật khẩu (áp dụng sau khoảng 5–15 phút)."; }
@@ -592,7 +609,8 @@ async function renderLop(sel) {
         let note = "";
         if (!gmail) { try { await P.createAuthUser(email, pw); } catch (e) { if (String(e.code || e.message).includes("email-already-in-use")) note = "tài khoản đã có, giữ mật khẩu cũ"; else throw e; } }
         const at = new Date().toISOString();
-        await setDoc(doc(db, "pna_accounts", email), { role: "sinh-vien", name: hoTen, username: gmail ? "" : mssv, cats: ["*"], updated: at, by: myEmail() }, { merge: true });
+        const cu = svs.find(x => x.id === email);   // giữ vai trò ban cán sự, BCH nếu đã giao
+        await setDoc(doc(db, "pna_accounts", email), { role: (cu && cu.vaiTro) || "sinh-vien", name: hoTen, username: gmail ? "" : mssv, cats: ["*"], updated: at, by: myEmail() }, { merge: true });
         await setDoc(doc(db, "pna_sv", email), { email, mssv, hoTen, ngaySinh, sdt, lop: cur.id, nganh: cur.nganh || "", khoa: cur.khoa || "", cvht: cur.cvht || [], updated: at, by: myEmail() }, { merge: true });
         try { await setDoc(doc(db, "pna_hoso", mssv), { email, updated: at, by: myEmail() }, { merge: true }); } catch (e) {}   // gắn tài khoản vào hồ sơ vòng đời (nếu đã có)
         res.push([mssv, hoTen, gmail ? gmail + " (Google)" : mssv, note || (pw ? pw : ""), "✓"]);

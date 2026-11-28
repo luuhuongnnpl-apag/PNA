@@ -8,7 +8,7 @@
    Dữ liệu cá nhân KHÔNG đưa lên kho mã GitHub: quản trị nhập tệp JSON ở trang “Nhập dữ liệu sinh viên”.
    ===================================================================== */
 import { doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, collectionGroup, getDocs, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
-import { THU_TUC, KHOA_QL } from "./thutuc-data.js?v=20261128x";
+import { THU_TUC, KHOA_QL } from "./thutuc-data.js?v=20261128y";
 const KHOA_TEN = KHOA_QL.replace(/^Khoa\s+/i, "").toUpperCase();
 
 const P = window.PNA, db = P.db, esc = P.esc;
@@ -67,6 +67,9 @@ async function loadMe(force) {
 const isCvht = () => !!(ME && ME.lops.length) || !!(P.acct && P.acct.role === "cvht");
 const isStaff = () => isAdmin() || (ME && ME.khoa) || isCvht();
 const canEdit = s => isAdmin() || (ME && s && (s.cvht || []).includes(ME.email));
+/* Ban quản trị lớp: quyền p (hs, pt, bbh, don) trong phạm vi lớp của tài khoản (lớp sinh viên + lops quản trị gán) */
+const myLopsH = () => [...(ME && ME.sv ? [ME.sv.lop] : []), ...((P.acct && P.acct.lops) || [])];
+const bq = (lop, p) => isAdmin() || (!!P.acct && !!(P.can && P.can(p)) && myLopsH().includes(lop));
 const seeAll = () => isAdmin() || (ME && ME.khoa);
 
 /* ---------- Dữ liệu ---------- */
@@ -138,9 +141,11 @@ function bindSearch(svs) {
 /* ---------- Trang lớp ---------- */
 async function renderLop(id) {
   await loadMe();
-  if (!isStaff()) return deny("Lớp " + id);
   let lops, all;
-  try { [lops, all] = await Promise.all([loadLops(), loadHoso()]); } catch (e) { return fail(e); }
+  if (!isStaff()) {
+    if (!bq(id, "hs")) return deny("Lớp " + id);
+    try { const x = await getDoc(doc(db, "pna_lop", id)); lops = x.exists() ? [{ id: x.id, ...x.data() }] : []; all = {}; (await getDocs(query(collection(db, "pna_hoso"), where("lop", "==", id)))).forEach(d => all[d.id] = { id: d.id, ...d.data() }); } catch (e) { return fail(e); }
+  } else try { [lops, all] = await Promise.all([loadLops(), loadHoso()]); } catch (e) { return fail(e); }
   const l = lops.find(x => x.id === id);
   if (!l) return page("Lớp " + esc(id), `<p class="empty">Không tìm thấy lớp hoặc bạn không phải cố vấn học tập của lớp này.</p>`, [["sv", "Hồ sơ sinh viên"], [null, id]]);
   const svs = Object.values(all).filter(s => s.lop === id).sort((a, b) => vi.compare(a.ten || "", b.ten || "") || vi.compare(a.hoTen, b.hoTen));
@@ -307,10 +312,11 @@ window.addEventListener("hashchange", () => { const h = decodeURIComponent(locat
 async function renderSv(mssv, tab) {
   await loadMe();
   const own = ME.sv && ME.sv.mssv === mssv;
-  if (!isStaff() && !own) return deny("Hồ sơ sinh viên");
+  if (!isStaff() && !own && !(P.can && P.can("hs") && myLopsH().length)) return deny("Hồ sơ sinh viên");
   let s, lop = null, ct = null, notes = [], dons = [], acts = [], mc = [];
   try { const d = await getDoc(doc(db, "pna_hoso", mssv)); if (!d.exists()) return page("Hồ sơ " + esc(mssv), `<p class="empty">${own ? "Hồ sơ của bạn chưa được nhập vào hệ thống. Liên hệ cố vấn học tập." : "Không tìm thấy hồ sơ hoặc bạn không quản lý sinh viên này."}</p>`, isStaff() ? [["sv", "Hồ sơ sinh viên"], [null, mssv]] : null); s = { id: d.id, ...d.data() }; }
   catch (e) { return page("Hồ sơ " + esc(mssv), `<p class="empty">Bạn không có quyền xem hồ sơ này.</p>`); }
+  if (!isStaff() && !own && !bq(s.lop, "hs")) return deny("Hồ sơ sinh viên");
   const edit = canEdit(s), self = own || edit;
   await Promise.all([
     getDoc(doc(db, "pna_lop", s.lop)).then(x => { if (x.exists()) lop = x.data(); }).catch(() => {}),
@@ -542,7 +548,7 @@ function tabRL(V, th) {
   return `<div class="sbox"><h3 class="sbox-title">RÈN LUYỆN — ${esc(K.tieuDe)}</h3>
     <div class="hs-kysel">${ks.map(x => `<button type="button" data-ky="${x}" class="${x === k ? "on" : ""}">HK ${ROMAN[hkOfKy(s.khoa, x)]}<small>${esc(x.split("_")[0].replace("-", "–"))}</small></button>`).join("")}</div>
     <div class="hs-hksum"><span>${esc(kyName(k))}: ${st}</span><span>Học tập kỳ này: <b>${H && H.g4 != null ? H.g4.toFixed(2) : "—"}</b> (thang 4) · ${H ? hocLuc(H.g4) || "—" : "—"}</span><span>Phong trào đã xác nhận: <b>${goiY.n3 + goiY.n4 + goiY.n5}</b> điểm gợi ý</span>
-      ${(own && s.chucVu) || edit ? `<span><a class="pill sm" href="#sv-bbh/${esc(s.lop)}/${esc(k)}">📋 Biên bản họp lớp ${esc(s.lop)}</a></span>` : ""}</div>
+      ${(own && bq(s.lop, "bbh")) || edit ? `<span><a class="pill sm" href="#sv-bbh/${esc(s.lop)}/${esc(k)}">📋 Biên bản họp lớp ${esc(s.lop)}</a></span>` : ""}</div>
     <ol class="hs-steps"><li class="${tu.at ? "ok" : "on"}">Sinh viên tự đánh giá từng tiêu chí, ghi và tải minh chứng</li><li class="${tu.gui ? "ok" : tu.at ? "on" : ""}">Gửi phiếu cho ban cán sự lớp</li><li class="${chot ? "ok" : tu.gui ? "on" : ""}">BCS, BCH chi đoàn tổng hợp biên bản họp lớp, trình CVHT ký</li><li class="${chot ? "on" : ""}">Hội đồng cấp Khoa, cấp Học viện xét, công nhận</li></ol>
     <div class="tbl-wrap"><table class="adm-table hs-rl"><thead><tr><th>Nội dung đánh giá</th><th class="c">Thang điểm</th><th class="c">Điểm SV tự đánh giá</th><th class="c">Điểm lớp đánh giá</th><th>Ghi chú (minh chứng các hoạt động)</th></tr></thead><tbody>
       ${rows}
@@ -751,7 +757,7 @@ async function bindSv(V) {
   document.querySelectorAll("[data-hdno]").forEach(b => b.onclick = () => xn(b.dataset.hdno, false));
   document.querySelectorAll("[data-hddel]").forEach(b => b.onclick = async () => { if (!await P.ask("Xóa kê khai này?")) return; try { await deleteDoc(doc(db, "pna_hoso", s.mssv, "hoatdong", b.dataset.hddel)); V.acts = V.acts.filter(a => a.id !== b.dataset.hddel); rerender(); } catch (e) { P.toast(e.message, "err"); } });
   /* Ban cán sự: tải kê khai chờ của lớp (một lần) */
-  if (V.tab === "phong-trao" && own && s.chucVu && !V.bcsList) {
+  if (V.tab === "phong-trao" && own && bq(s.lop, "pt") && !V.bcsList) {
     try { const q = await getDocs(query(collectionGroup(db, "hoatdong"), where("lop", "==", s.lop), where("tt", "==", "cho"))); V.bcsList = []; q.forEach(d => { const a = { id: d.id, ...d.data() }; if (a.mssv !== s.mssv) V.bcsList.push(a); }); rerender(); return; } catch (e) { V.bcsList = []; console.warn("BCS", e.message); }
   }
   if (!edit) return;
@@ -946,7 +952,8 @@ async function renderBox() {
   box.hidden = false;
   const lops = isStaff() ? (ME.lops || []) : [];
   box.innerHTML = `<h3 class="sbox-title">HỒ SƠ SINH VIÊN</h3>
-    ${ME.sv && !isStaff() ? `<p class="muted" style="margin:-4px 0 10px">Hành trình học tập, rèn luyện, đơn đã gửi.</p><button type="button" class="sbtn primary" data-go="sv/${esc(ME.sv.mssv)}">Hồ sơ của tôi</button>` : `
+    ${ME.sv && !isStaff() ? `<p class="muted" style="margin:-4px 0 10px">Hành trình học tập, rèn luyện, đơn đã gửi.</p><button type="button" class="sbtn primary" data-go="sv/${esc(ME.sv.mssv)}">Hồ sơ của tôi</button>
+      ${bq(ME.sv.lop, "hs") ? `<button type="button" class="sbtn" data-go="sv/lop/${esc(ME.sv.lop)}">Lớp ${esc(ME.sv.lop)} (ban quản trị)</button>` : ""}${bq(ME.sv.lop, "bbh") ? `<button type="button" class="sbtn" data-go="sv-bbh/${esc(ME.sv.lop)}">Biên bản họp lớp</button>` : ""}` : `
     <p class="muted" style="margin:-4px 0 10px">Quản lý sinh viên theo vòng đời: lớp, CTĐT, rèn luyện, sự kiện, thủ tục.</p>
     ${lops.length ? `<div class="tt-links">${lops.sort((a, b) => a.id.localeCompare(b.id)).map(l => `<a href="#sv/lop/${esc(l.id)}"><span class="tt-dot"></span>Lớp ${esc(l.id)}${l.ten ? " — " + esc(l.ten) : ""}</a>`).join("")}</div>` : ""}
     <button type="button" class="sbtn${lops.length ? "" : " primary"}" data-go="sv" style="margin-top:8px">${seeAll() ? "Tất cả lớp – tìm sinh viên" : "Danh sách lớp"}</button>
@@ -989,8 +996,8 @@ async function renderBBH(lopId, ky) {
   if (!l) return page("Biên bản họp lớp", `<p class="empty">Không tìm thấy lớp ${esc(lopId)}.</p>`);
   const cv = isAdmin() || (l.cvht || []).includes(myEmail());
   let bcs = false, meHs = null;
-  if (!cv && ME.sv && ME.sv.lop === lopId) { try { const x = await getDoc(doc(db, "pna_hoso", ME.sv.mssv)); if (x.exists()) { meHs = x.data(); bcs = !!meHs.chucVu; } } catch (e) {} }
-  if (!cv && !bcs) return page("Biên bản họp lớp", `<p class="empty">Chỉ ban cán sự lớp, BCH chi đoàn (sinh viên có chức vụ trong hồ sơ) và cố vấn học tập của lớp ${esc(lopId)} dùng chức năng này.</p>`);
+  if (!cv && bq(lopId, "bbh")) { bcs = true; if (ME.sv) { try { const x = await getDoc(doc(db, "pna_hoso", ME.sv.mssv)); if (x.exists()) meHs = x.data(); } catch (e) {} } }
+  if (!cv && !bcs) return page("Biên bản họp lớp", `<p class="empty">Chỉ ban cán sự lớp, BCH chi đoàn được giao quyền và cố vấn học tập của lớp ${esc(lopId)} dùng chức năng này.</p>`);
   const K = khungOf({ khoa: l.khoa }), ks = kyList(l.khoa).filter(k => k <= kyNow());
   if (!ky || !ks.includes(ky)) ky = ks.length > 1 ? ks[ks.length - 2] : ks[0] || kyNow();
   const id = `${lopId}_${ky}`;
@@ -1051,7 +1058,7 @@ async function renderBBH(lopId, ky) {
   if ($("#bbSave")) $("#bbSave").onclick = async () => { try { if (await write({ tt: tt === "tra-lai" && !cv ? "nhap" : tt }, "lưu")) { P.toast("Đã lưu biên bản.", "ok"); renderBBH(lopId, ky); } } catch (e) { P.toast("Chưa lưu được: " + e.message, "err"); } };
   if ($("#bbTrinh")) $("#bbTrinh").onclick = async () => {
     const sig = await signDialog("LỚP TRƯỞNG / BAN CÁN SỰ KÝ TRÌNH CVHT"); if (!sig) return;
-    try { if (await write({ tt: "trinh", lt: { email: myEmail(), ten: (meHs && meHs.hoTen) || ME.sv.hoTen, chucVu: (meHs && meHs.chucVu) || "", sig, at: nowISO() } }, "trình CVHT")) { P.toast("Đã ký và trình cố vấn học tập.", "ok"); renderBBH(lopId, ky); } } catch (e) { P.toast("Chưa trình được: " + e.message, "err"); }
+    try { if (await write({ tt: "trinh", lt: { email: myEmail(), ten: (meHs && meHs.hoTen) || (ME.sv && ME.sv.hoTen) || (P.acct && P.acct.name) || myEmail(), chucVu: (meHs && meHs.chucVu) || "", sig, at: nowISO() } }, "trình CVHT")) { P.toast("Đã ký và trình cố vấn học tập.", "ok"); renderBBH(lopId, ky); } } catch (e) { P.toast("Chưa trình được: " + e.message, "err"); }
   };
   if ($("#bbTra")) $("#bbTra").onclick = async () => { const r = await P.ask("Lý do trả lại (ban cán sự sẽ thấy):", { title: "TRẢ LẠI BIÊN BẢN", input: "Lý do", ok: "Trả lại" }); if (r === null || r === false) return; try { await setDoc(ref, { ...base(), tt: "tra-lai", traLai: String(r).trim() }, { merge: true }); renderBBH(lopId, ky); } catch (e) { P.toast(e.message, "err"); } };
   if ($("#bbMo")) $("#bbMo").onclick = async () => { if (!await P.ask("Mở lại biên bản để sửa? Kết quả đã ghi vào hồ sơ giữ nguyên cho tới khi ký, chốt lại.")) return; try { await setDoc(ref, { ...base(), tt: "nhap" }, { merge: true }); renderBBH(lopId, ky); } catch (e) { P.toast(e.message, "err"); } };
