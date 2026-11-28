@@ -5,9 +5,10 @@
      của Học viện Hành chính Quốc gia; đổi tên cơ quan và thể thức (sau hợp nhất) theo Học viện Hành chính và Quản trị công.
    Quản trị viên sửa trên giao diện (lưu ở pna_tt_settings/thutuc); tệp này là bộ khởi tạo.
    Trường nhập: k, label, type: text|textarea|date|number|select|check|table, req, opts, cols, hint.
+   Tên đơn vị theo cổng thông tin apag.edu.vn (28/11/2026): Khoa Khoa học liên ngành - Ngoại ngữ - Tin học (thay Khoa Ngoại ngữ - Tin học, Khoa Khoa học liên ngành).
    mau (bố cục in theo Phụ lục): pl, tieuDe2, them[] (dòng thông tin thêm), body[] (đoạn văn), sigs[] (khối ký), kiemTra, lyDo (true | false | "opt").
    Trong body: {mã trường} điền giá trị · {^mã} chữ in hoa · {#mã} bảng · {?mã} ô đánh dấu các lựa chọn · {lyDo} · {minhChung} · {KHOA} · {HV} · "!!" đầu dòng = tiêu đề giữa trang. */
-export const TT_VER = "pl1687-2023-v1";
+export const TT_VER = "pl1687-2023-v2";
 export const QC = "Quy chế đào tạo trình độ đại học (QĐ 2567-QĐ/HVHCQTC ngày 09/3/2026)";
 export const MAU_QC = "Quy chế đào tạo trình độ đại học ban hành kèm Quyết định số 1687/QĐ-HCQG ngày 24/5/2023";
 export const HV = "Học viện Hành chính và Quản trị công";
@@ -125,35 +126,35 @@ export const THU_TUC = [
   {
     key: "cong-nhan-tin-chi", nhom: "Công nhận, miễn học", ten: "Công nhận kết quả học tập, chuyển đổi tín chỉ (Tiếng Anh, Tiếng Pháp, Tin học cơ bản)",
     tieuDe: "ĐƠN ĐỀ NGHỊ CÔNG NHẬN KẾT QUẢ HỌC TẬP VÀ CHUYỂN ĐỔI TÍN CHỈ HỌC PHẦN {^mon} TRONG CHƯƠNG TRÌNH ĐÀO TẠO",
-    kinhGui: "" + GD + "; Ban Quản lý đào tạo; Khoa Ngoại ngữ - Tin học; Khoa (quản lý sinh viên): {KHOA}",
+    kinhGui: "" + GD + "; Ban Quản lý đào tạo; Khoa Khoa học liên ngành - Ngoại ngữ - Tin học; Khoa (quản lý sinh viên): {KHOA}",
     canCu: "Điều 18 Quy chế đào tạo trình độ đại học (QĐ 2567-QĐ/HVHCQTC ngày 09/3/2026)",
     huongDan: "Nộp hồ sơ ít nhất 30 ngày trước thời điểm tổ chức đăng ký học phần theo kế hoạch đào tạo. Mang bản chính để đối chiếu khi Ban Quản lý đào tạo yêu cầu.",
     minhChung: "Bản sao có chứng thực chứng chỉ ngoại ngữ, công nghệ thông tin; bản sao có chứng thực bằng tốt nghiệp trung cấp, cao đẳng, đại học trở lên; tài liệu phục vụ đánh giá, đối sánh (bảng điểm, đề cương học phần…).",
     steps: ["cvht", "khoa"],
     fields: [{ k: "mon", label: "Học phần đề nghị công nhận", type: "select", req: true, opts: ["Tiếng Anh", "Tiếng Pháp", "Tin học cơ bản"] }, { k: "hocPhan", label: "Học phần cụ thể", type: "table", req: true, cols: ["Tên học phần", "Số tín chỉ", "Ghi chú"] }],
-    mau: { pl: "Phụ lục 7, 8, 9", body: ["Em làm đơn này kính đề nghị Giám đốc Học viện và Ban Quản lý đào tạo, Khoa Ngoại ngữ - Tin học xem xét và cho phép em được công nhận kết quả học tập và chuyển đổi tín chỉ học phần {mon} trong chương trình đào tạo. Cụ thể như sau:", "{#hocPhan}", "Lý do: {lyDo}", ...MC], sigs: [CV, SV, { t: "Ý KIẾN CỦA KHOA NGOẠI NGỮ - TIN HỌC" }, QL] }
+    mau: { pl: "Phụ lục 7, 8, 9", body: ["Em làm đơn này kính đề nghị Giám đốc Học viện và Ban Quản lý đào tạo, Khoa Khoa học liên ngành - Ngoại ngữ - Tin học xem xét và cho phép em được công nhận kết quả học tập và chuyển đổi tín chỉ học phần {mon} trong chương trình đào tạo. Cụ thể như sau:", "{#hocPhan}", "Lý do: {lyDo}", ...MC], sigs: [CV, SV, { t: "Ý KIẾN CỦA KHOA KHOA HỌC LIÊN NGÀNH - NGOẠI NGỮ - TIN HỌC" }, QL] }
   },
   {
     key: "mien-gdtc", nhom: "Công nhận, miễn học", ten: "Miễn học phần, miễn nội dung thực hành Giáo dục thể chất",
     tieuDe: "ĐƠN ĐỀ NGHỊ MIỄN HỌC PHẦN, MIỄN NỘI DUNG THỰC HÀNH GIÁO DỤC THỂ CHẤT",
-    kinhGui: "" + GD + "; Ban Quản lý đào tạo; Khoa Khoa học liên ngành; Khoa (quản lý sinh viên): {KHOA}",
+    kinhGui: "" + GD + "; Ban Quản lý đào tạo; Khoa Khoa học liên ngành - Ngoại ngữ - Tin học; Khoa (quản lý sinh viên): {KHOA}",
     canCu: MAU_QC + ", Phụ lục 10 (mẫu đơn)",
     huongDan: "Sinh viên thống kê đầy đủ học phần hoặc nội dung thực hành xin miễn học; nộp kèm minh chứng (giấy xác nhận của cơ sở khám bệnh, chữa bệnh; chứng chỉ, kết quả đã học…).",
     minhChung: "Giấy xác nhận tình trạng sức khỏe của cơ sở khám bệnh, chữa bệnh; bảng điểm, chứng chỉ đã tích lũy (nếu có).",
     steps: ["cvht", "khoa"],
     fields: [{ k: "deNghi", label: "Đề nghị", type: "check", req: true, opts: ["Miễn học phần Giáo dục thể chất (GDTC).", "Miễn học nội dung thực hành và chuyển qua học nội dung lý luận, nguyên lý kỹ thuật của các môn thể thao trong học phần GDTC."] }, { k: "hocPhan", label: "Học phần hoặc nội dung thực hành xin miễn học", type: "table", req: true, cols: ["Học phần", "Tên nội dung học phần", "Số tín chỉ", "Điểm hệ 10", "Điểm chữ", "Điểm hệ 4", "Ghi chú"] }],
-    mau: { pl: "Phụ lục 10", body: ["Em làm đơn này kính đề nghị Giám đốc Học viện và Ban Quản lý đào tạo, Khoa Khoa học liên ngành xem xét và cho phép em được:", "{?deNghi}", "Với lý do: {lyDo}", "!!HỌC PHẦN HOẶC NỘI DUNG THỰC HÀNH XIN MIỄN HỌC", "{#hocPhan}", ...MC], sigs: [CV, SV, { t: "Ý KIẾN CỦA KHOA KHOA HỌC LIÊN NGÀNH" }, QL] }
+    mau: { pl: "Phụ lục 10", body: ["Em làm đơn này kính đề nghị Giám đốc Học viện và Ban Quản lý đào tạo, Khoa Khoa học liên ngành - Ngoại ngữ - Tin học xem xét và cho phép em được:", "{?deNghi}", "Với lý do: {lyDo}", "!!HỌC PHẦN HOẶC NỘI DUNG THỰC HÀNH XIN MIỄN HỌC", "{#hocPhan}", ...MC], sigs: [CV, SV, { t: "Ý KIẾN CỦA KHOA KHOA HỌC LIÊN NGÀNH - NGOẠI NGỮ - TIN HỌC" }, QL] }
   },
   {
     key: "mien-gdqp", nhom: "Công nhận, miễn học", ten: "Miễn, tạm hoãn học Giáo dục quốc phòng - An ninh",
     tieuDe: "ĐƠN ĐỀ NGHỊ MIỄN, TẠM HOÃN HỌC HỌC PHẦN GIÁO DỤC QUỐC PHÒNG - AN NINH",
-    kinhGui: "" + GD + "; Ban Quản lý đào tạo; Khoa Khoa học liên ngành; Khoa (quản lý sinh viên): {KHOA}",
+    kinhGui: "" + GD + "; Ban Quản lý đào tạo; Khoa Khoa học liên ngành - Ngoại ngữ - Tin học; Khoa (quản lý sinh viên): {KHOA}",
     canCu: MAU_QC + ", Phụ lục 11 (mẫu đơn)",
     huongDan: "Sinh viên thống kê đầy đủ học phần, nội dung xin miễn, tạm hoãn học; nộp kèm minh chứng theo quy định về giáo dục quốc phòng và an ninh.",
     minhChung: "Minh chứng theo từng trường hợp (giấy xác nhận sức khỏe, chứng chỉ GDQP-AN đã có, quyết định, giấy tờ của cơ quan có thẩm quyền…).",
     steps: ["cvht", "khoa"],
     fields: [{ k: "deNghi", label: "Đề nghị", type: "check", req: true, opts: ["Miễn học môn Giáo dục quốc phòng - An ninh (GDQPAN).", "Miễn học, miễn thi học phần, nội dung trong chương trình GDQPAN.", "Miễn học các nội dung thực hành kỹ năng quân sự.", "Tạm hoãn học môn GDQPAN."] }, { k: "hocPhan", label: "Các học phần, nội dung xin miễn, tạm hoãn học", type: "table", req: true, cols: ["Học phần", "Tên nội dung học phần", "Số tín chỉ", "Điểm hệ 10", "Điểm hệ 4", "Ghi chú"] }],
-    mau: { pl: "Phụ lục 11", body: ["Em làm đơn này kính đề nghị Giám đốc Học viện và Ban Quản lý đào tạo, Khoa Khoa học liên ngành xem xét và cho phép em được:", "{?deNghi}", "Với lý do: {lyDo}", "!!CÁC HỌC PHẦN, NỘI DUNG XIN MIỄN, TẠM HOÃN HỌC GDQPAN", "{#hocPhan}", ...MC], sigs: [CV, SV, { t: "Ý KIẾN CỦA KHOA KHOA HỌC LIÊN NGÀNH" }, QL] }
+    mau: { pl: "Phụ lục 11", body: ["Em làm đơn này kính đề nghị Giám đốc Học viện và Ban Quản lý đào tạo, Khoa Khoa học liên ngành - Ngoại ngữ - Tin học xem xét và cho phép em được:", "{?deNghi}", "Với lý do: {lyDo}", "!!CÁC HỌC PHẦN, NỘI DUNG XIN MIỄN, TẠM HOÃN HỌC GDQPAN", "{#hocPhan}", ...MC], sigs: [CV, SV, { t: "Ý KIẾN CỦA KHOA KHOA HỌC LIÊN NGÀNH - NGOẠI NGỮ - TIN HỌC" }, QL] }
   },
   {
     key: "xet-tot-nghiep", nhom: "Khóa luận, tốt nghiệp", ten: "Xét, công nhận tốt nghiệp sớm hoặc muộn so với kế hoạch",

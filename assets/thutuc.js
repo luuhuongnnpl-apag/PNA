@@ -8,7 +8,7 @@
    không thay thế chữ ký số do tổ chức cung cấp dịch vụ chứng thực cấp. Có ô gắn bản PDF đã ký số.
    ===================================================================== */
 import { doc, getDoc, setDoc, updateDoc, addDoc, deleteDoc, collection, getDocs, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
-import { THU_TUC, STEP_ROLES, TT_VER, HV, KHOA_QL, MAU_QC } from "./thutuc-data.js?v=20261128w";
+import { THU_TUC, STEP_ROLES, TT_VER, HV, KHOA_QL, MAU_QC } from "./thutuc-data.js?v=20261128x";
 
 const P = window.PNA;
 const db = P.db, esc = P.esc;

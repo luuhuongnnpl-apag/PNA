@@ -17,11 +17,11 @@ const snapshot = () => ({ L: boxes("L").map(keyOf), R: boxes("R").map(keyOf) });
 const findBox = k => document.querySelector(`#toolsCol>[data-box="${k}"],#colR>[data-box="${k}"]`) || (/^[\w-]+$/.test(k) ? document.querySelector(`#toolsCol>#${k},#colR>#${k}`) : null);
 const wide = () => !matchMedia("(max-width:1000px)").matches;
 
-const DEFAULT = { L: ["nav", "tongquan", "congcu", "lienket"], R: ["ttBox", "hsBox"] };
+const DEFAULT = { L: ["nav", "tongquan", "congcu", "lienket"], R: ["ttBox", "hsBox", "donvi"] };
 let saved = null, arranging = false, live = false, before = null, dragEl = null;
 
 function syncCols() { $("#layout").classList.toggle("has-r", arranging || live || boxes("R").length > 0); }
-const cur = () => saved || DEFAULT;
+const cur = () => { const c = saved || DEFAULT; return [...(c.L || []), ...(c.R || [])].includes("donvi") ? c : { L: c.L || [], R: [...(c.R || []), "donvi"] }; };
 
 /* Đặt các ô theo bố cục; chỉ động vào DOM khi thứ tự đang khác (tránh vòng lặp với MutationObserver) */
 function apply(lay) {

@@ -189,6 +189,17 @@ service cloud.firestore {
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tt', 'xn']));
         allow delete: if isAdmin() || me() in resource.data.get('cvht', []) || (ownHoso(id) && resource.data.tt != 'ok');
       }
+      // Minh chứng rèn luyện, phong trào: thông tin tệp (minhchung) và nội dung (mcdata); sinh viên tải lên, cán bộ và BCS cùng lớp xem
+      match /minhchung/{m} {
+        allow read: if signedIn() && (isAdmin() || inNd('khoa') || ownHoso(id) || me() in get(/databases/$(database)/documents/pna_hoso/$(id)).data.get('cvht', []) || isBcsOf(get(/databases/$(database)/documents/pna_hoso/$(id)).data.lop));
+        allow create: if ownHoso(id) && request.resource.data.by == me();
+        allow delete: if ownHoso(id) || isAdmin() || me() in get(/databases/$(database)/documents/pna_hoso/$(id)).data.get('cvht', []);
+      }
+      match /mcdata/{m} {
+        allow read: if signedIn() && (isAdmin() || inNd('khoa') || ownHoso(id) || me() in get(/databases/$(database)/documents/pna_hoso/$(id)).data.get('cvht', []) || isBcsOf(get(/databases/$(database)/documents/pna_hoso/$(id)).data.lop));
+        allow create: if ownHoso(id) && request.resource.data.by == me();
+        allow delete: if ownHoso(id) || isAdmin() || me() in get(/databases/$(database)/documents/pna_hoso/$(id)).data.get('cvht', []);
+      }
       // Ghi chú nội bộ của cố vấn học tập: sinh viên không xem được
       match /noibo/{n} {
         allow read, write: if signedIn() && (isAdmin()
@@ -200,6 +211,26 @@ service cloud.firestore {
       allow read: if signedIn() && (isAdmin() || inNd('khoa') || me() in resource.data.get('cvht', []) || isBcsOf(resource.data.lop) || (isSv() && resource.data.mssv == get(svPath()).data.mssv));
     }
     match /pna_ctdt/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
+
+    // Phiếu tự đánh giá rèn luyện (bản tóm tắt để ban cán sự, CVHT tổng hợp biên bản họp lớp)
+    function mySvDoc() { return get(svPath()).data; }
+    match /pna_drl_phieu/{p} {
+      allow read: if signedIn() && (isAdmin() || inNd('khoa') || me() in lopCvht(resource.data.lop) || isBcsOf(resource.data.lop)
+        || (isSv() && resource.data.mssv == mySvDoc().mssv));
+      allow create, update: if (isSv() && request.resource.data.mssv == mySvDoc().mssv && request.resource.data.lop == mySvDoc().lop)
+        || isAdmin() || me() in lopCvht(request.resource.data.lop);
+      allow delete: if isAdmin();
+    }
+    // Biên bản họp lớp đánh giá rèn luyện: BCS/BCH lập, ký trình; CVHT ký, chốt
+    match /pna_bbh/{b} {
+      allow read: if signedIn() && (isAdmin() || inNd('khoa') || me() in lopCvht(resource.data.lop) || isBcsOf(resource.data.lop));
+      allow create: if isAdmin() || me() in lopCvht(request.resource.data.lop)
+        || (isBcsOf(request.resource.data.lop) && request.resource.data.tt in ['nhap', 'trinh']);
+      allow update: if isAdmin() || me() in lopCvht(resource.data.lop)
+        || (isBcsOf(resource.data.lop) && resource.data.get('tt', 'nhap') in ['nhap', 'tra-lai'] && request.resource.data.tt in ['nhap', 'trinh']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hop', 'rows', 'tt', 'lt', 'updated', 'by']));
+      allow delete: if isAdmin();
+    }
 
     // Yêu cầu đặt lại mật khẩu: quản trị hoặc CVHT gửi; GitHub Actions (quyền quản trị) áp dụng rồi xóa mật khẩu
     match /pna_yeucau_tk/{id} {

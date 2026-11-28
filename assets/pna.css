@@ -1001,3 +1001,30 @@ body.pg-sub .box{max-width:none}
 .a4-mc{margin:2px 0 4px 18px;padding-left:18px}
 .a4-kt{margin-top:18px;font-size:12pt}
 .a4-kt p{margin:2px 0}
+
+/* Ô THÔNG TIN CÁC ĐƠN VỊ */
+.dv-body{font-size:13px;line-height:1.5;max-height:520px;overflow:auto}
+.dv-body p{margin:0 0 6px}.dv-body ul{margin:0 0 8px;padding-left:18px}
+.dv-edit{outline:2px dashed #9fb3cc;outline-offset:3px;border-radius:4px;padding:4px;max-height:none;background:#fffef6}
+.dv-bar{display:flex;gap:4px;align-items:center;margin:0 0 6px;flex-wrap:wrap}
+.dv-bar>button:not(.btn){border:1px solid var(--line,#dde2ea);background:#fff;border-radius:4px;width:30px;height:28px;cursor:pointer}
+.dv-bar span{flex:1}
+
+/* Phiếu rèn luyện chi tiết, minh chứng, biên bản họp lớp */
+.rl-sel{display:block;width:100%;max-width:640px;margin-top:5px;padding:5px 6px;border:1px solid var(--line,#dde2ea);border-radius:6px;font:inherit;font-size:13px}
+.rl-opts{display:flex;flex-direction:column;gap:3px;margin-top:5px}
+.rl-ck,.rl-tru{display:flex;gap:6px;align-items:flex-start;font-size:13px}
+.rl-tru input{width:52px;flex:none}
+.rl-pick{margin-top:4px;font-size:13px;color:#1e3a8a}
+.rl-mc{min-width:200px}
+.mc-list{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.mc-chip{display:inline-flex;gap:4px;align-items:center;background:#eef4ff;border-radius:12px;padding:1px 8px;font-size:12px}
+.mc-up{display:inline-block;margin-top:4px;font-size:12px;color:#1e62d0;cursor:pointer;border:1px dashed #9fb3cc;border-radius:6px;padding:2px 8px}
+.mc-up.busy{opacity:.5;pointer-events:none}
+.hs-kysel a{display:inline-block;padding:6px 10px;border:1px solid var(--line,#dde2ea);border-radius:8px;margin:0 6px 6px 0;color:inherit;text-decoration:none;font-size:13px}
+.hs-kysel a.on{background:#7a1c1c;color:#fff;border-color:#7a1c1c}
+.bbh-t input.hs-gc{min-width:180px}
+.bbh-sig{display:grid;grid-template-columns:1fr 1fr;gap:20px;text-align:center;margin:14px 0}
+.bbh-sig>div{display:flex;flex-direction:column;align-items:center;gap:4px}
+.bbh-sig img{max-height:70px}
+.pill.sm{padding:4px 10px;font-size:12px}
