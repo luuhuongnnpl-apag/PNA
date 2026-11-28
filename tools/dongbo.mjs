@@ -95,6 +95,15 @@ async function importOps(data) {
 async function chanDoan(data) {
   const out = [];
   const cfg = fs.readFileSync(P("config.js"), "utf8"), key = (cfg.match(/apiKey:\s*"([^"]+)"/) || [])[1];
+  if ((data.viec || []).includes("bat-dang-nhap-email") && !process.env.FAKE_DB) {
+    try {
+      const { cert } = await import("firebase-admin/app");
+      const tok = (await cert(sa).getAccessToken()).access_token;
+      const r = await fetch(`https://identitytoolkit.googleapis.com/admin/v2/projects/${sa.project_id}/config?updateMask=signIn.email.enabled,signIn.email.passwordRequired`, { method: "PATCH", headers: { Authorization: "Bearer " + tok, "Content-Type": "application/json" }, body: JSON.stringify({ signIn: { email: { enabled: true, passwordRequired: true } } }) });
+      const j = await r.json();
+      out.push("Bật đăng nhập Email/Mật khẩu: " + (r.ok ? "THÀNH CÔNG (email.enabled=" + (j.signIn && j.signIn.email && j.signIn.email.enabled) + ")" : "LỖI " + r.status + " " + JSON.stringify(j.error && (j.error.message || j.error))));
+    } catch (e) { out.push("Bật đăng nhập Email/Mật khẩu: lỗi " + e.message); }
+  }
   if ((data.viec || []).includes("dang-ky")) {
     const em = "chandoan-" + Date.now() + "@taikhoan.pna";
     try {
