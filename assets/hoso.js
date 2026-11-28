@@ -198,7 +198,7 @@ async function renderLop(id) {
           <td><small>${XL.filter(x => r.c[x]).map(x => `<b style="color:${XL_C[x]}">${x} ${r.c[x]}</b>`).join(" · ") || "—"}</small></td></tr>`).join("")}</tbody></table></div>` : `<p class="muted">Chưa có học kỳ.</p>`}</div>
     </div>
     <div class="page-tools">${edit ? `<button type="button" id="lopAcc">Cấp tài khoản cho sinh viên chưa có (${svs.length - hasAcc})</button>` : ""}<button type="button" id="lopCsv">⤓ Xuất danh sách (Excel)</button></div>
-    <p><a class="pill" href="#sv-bbh/${esc(id)}">📋 Biên bản họp lớp đánh giá rèn luyện (Phụ lục 02)</a></p>${adminBox}${drlBox}
+    <p><a class="pill" href="#sv-bbh/${esc(id)}">📋 Biên bản họp lớp đánh giá rèn luyện (Phụ lục 02)</a></p>
     <div class="hs-filter"><input type="search" id="lopQ" placeholder="Lọc theo mã, tên, số điện thoại…"><select id="lopSt"><option value="">Mọi trạng thái</option>${Object.keys(TT).map(k => `<option value="${k}">${TT[k][0]}</option>`).join("")}</select></div>
     <div class="tbl-wrap"><table class="adm-table ftbl hs-tbl"><thead><tr><th class="c">STT</th><th>Mã SV</th><th>Họ và tên</th><th>Ngày sinh</th><th>Điện thoại</th><th>Trạng thái</th><th class="c">ĐRL</th><th>Xếp loại${kLast ? `<br><small>${esc(kyName(kLast))}</small>` : ""}</th><th class="c">Tài khoản</th>${lopCt ? `<th class="c">TBC tích lũy<br><small>(thang 4)</small></th>` : ""}<th class="c">Hoạt động<br><small>đã xác nhận</small></th>${lopCt ? `<th class="c">TC đã qua</th>` : ""}</tr></thead><tbody>${rows || `<tr><td colspan="12" class="muted">Chưa có sinh viên.</td></tr>`}</tbody></table></div>`,
     [["sv", "Hồ sơ sinh viên"], [null, l.id]]);
@@ -936,9 +936,19 @@ async function renderCtdt() {
     <label class="fld"><span>Số tín chỉ từng học kỳ (cách nhau dấu phẩy, theo thứ tự HK I, II, …)</span><input data-f="hocKy" value="${esc((c.hocKy || []).map(h => h.tc).join(", "))}"></label>
     <label class="fld"><span>Kế hoạch đào tạo — mỗi dòng một học phần: <code>Học kỳ | Mã HP | Tên học phần | Số TC | Loại (BB bắt buộc / TC tự chọn / DK điều kiện) | Nhóm tự chọn | Mã HP tiên quyết | Ghi chú</code></span><textarea data-f="keHoach" rows="10">${esc((c.keHoach || []).map(h => [h.hk, h.ma, h.ten, h.tc, h.loai, h.nhom || "", (h.tq || []).join(" "), h.ghiChu || ""].join(" | ").replace(/( \| )+$/, "")).join("\n"))}</textarea></label>
     ${a ? `<div class="dlg-act" style="justify-content:flex-start"><button type="button" class="btn primary" data-ctsave>Lưu</button>${c.id ? `<button type="button" class="btn danger" data-ctdel>Xóa</button>` : ""}</div>` : ""}</details>`;
-  page("Chương trình đào tạo", `<p class="tt-note">Mỗi lớp gắn một chương trình đào tạo (ở trang lớp). Hồ sơ sinh viên hiện kế hoạch học tập theo học kỳ để cố vấn tư vấn đăng ký học phần, học lại, học cải thiện, học vượt.</p>
+  let lopsCt = []; if (a) { try { (await getDocs(collection(db, "pna_lop"))).forEach(d => lopsCt.push({ id: d.id, ...d.data() })); } catch (e) {} lopsCt.sort((x, y) => x.id.localeCompare(y.id)); }
+  const ganCt = a ? `<details class="more"><summary>Gán chương trình đào tạo cho lớp (quản trị)</summary><p class="muted">Chọn CTĐT cho từng lớp rồi bấm Lưu; hồ sơ sinh viên của lớp được đồng bộ theo. Cố vấn học tập của lớp gán ở <a href="#tt-lop">Lớp & tài khoản sinh viên</a>.</p>
+    <div class="tbl-wrap"><table class="adm-table"><thead><tr><th>Lớp</th><th>Ngành</th><th>Khóa</th><th>Chương trình đào tạo</th><th></th></tr></thead><tbody>${lopsCt.map(l => `<tr><td><b>${esc(l.id)}</b>${l.ten ? `<br><small class="muted">${esc(l.ten)}</small>` : ""}</td><td>${esc(l.nganh || "")}</td><td>${esc(l.khoa || "")}</td>
+      <td><select class="fld-sel" data-lopct="${esc(l.id)}" style="width:auto"><option value="">— Chưa gán —</option>${list.map(c => `<option value="${esc(c.id)}"${c.id === l.ctdt ? " selected" : ""}>${esc(c.id)} — ${esc(c.ten || "")}</option>`).join("")}</select></td>
+      <td><button type="button" class="btn sm" data-lopctsave="${esc(l.id)}">Lưu</button></td></tr>`).join("")}</tbody></table></div></details>` : "";
+  page("Chương trình đào tạo", ganCt + `<p class="tt-note">Mỗi lớp gắn một chương trình đào tạo (quản trị gán ở mục trên). Hồ sơ sinh viên hiện kế hoạch học tập theo học kỳ để cố vấn tư vấn đăng ký học phần, học lại, học cải thiện, học vượt.</p>
     <div id="ctList">${list.map(card).join("")}${a ? card({}, list.length) : ""}</div><p class="err" id="ctErr"></p>`, [["sv", "Hồ sơ sinh viên"], [null, "Chương trình đào tạo"]]);
   if (!a) return;
+  document.querySelectorAll("[data-lopctsave]").forEach(b => b.onclick = async () => {
+    const id = b.dataset.lopctsave, ctdt = document.querySelector(`[data-lopct="${CSS.escape(id)}"]`).value; b.disabled = true;
+    try { await setDoc(doc(db, "pna_lop", id), { ctdt, updated: nowISO() }, { merge: true }); await syncLop(id, { ctdt }); P.logAct("LOP_CTDT", id + " → " + (ctdt || "—")); reset(); P.toast("Đã gán " + (ctdt || "(bỏ gán)") + " cho lớp " + id + ".", "ok"); }
+    catch (e) { P.toast("Chưa lưu được: " + e.message, "err"); } finally { b.disabled = false; }
+  });
   document.querySelectorAll("[data-ctsave]").forEach(b => b.onclick = async () => {
     const det = b.closest("details"), f = k => det.querySelector(`[data-f="${k}"]`).value.trim();
     const id = f("id").toUpperCase().replace(/\s+/g, "-");
