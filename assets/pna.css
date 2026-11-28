@@ -1028,3 +1028,7 @@ body.pg-sub .box{max-width:none}
 .bbh-sig>div{display:flex;flex-direction:column;align-items:center;gap:4px}
 .bbh-sig img{max-height:70px}
 .pill.sm{padding:4px 10px;font-size:12px}
+
+.hs-two-w{grid-template-columns:minmax(220px,1fr) 2.2fr}
+.hs-kyst td,.hs-kyst th{padding:5px 8px}
+@media (max-width:860px){.hs-two-w{grid-template-columns:1fr}}

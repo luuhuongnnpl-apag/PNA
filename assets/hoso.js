@@ -167,21 +167,40 @@ async function renderLop(id) {
       <label class="fld" style="max-width:260px"><span>Học kỳ</span><select id="drlKy">${kyList(l.khoa).map(k => `<option value="${k}"${k === kyNow() ? " selected" : ""}>${kyName(k)}</option>`).join("")}</select></label>
       <textarea id="drlPaste" rows="5" class="fld-sel" placeholder="2505TTRA001	85	Tốt"></textarea>
       <div class="dlg-act" style="justify-content:flex-start"><button type="button" class="btn primary" id="drlGo">Cập nhật kết quả rèn luyện</button></div><p class="err" id="drlErr"></p></details>` : "";
-  const rows = svs.map((s, i) => { const d = kLast && (s.drl || {})[kLast]; return `<tr class="tt-row" data-go="sv/${esc(s.mssv)}" data-st="${esc(s.trangThai || "dang-hoc")}" data-q="${esc((s.mssv + " " + s.hoTen + " " + (s.sdt || "")).toLowerCase())}">
+  /* Hoạt động phong trào của lớp (đã xác nhận / chờ) */
+  const hd = {};
+  try {
+    const qs = isAdmin() || !isStaff() ? [query(collectionGroup(db, "hoatdong"), where("lop", "==", id))] : [query(collectionGroup(db, "hoatdong"), where("cvht", "array-contains", ME.email))];
+    for (const q of qs) (await getDocs(q)).forEach(d => { const a = d.data(); if (a.lop !== id) return; const o = hd[a.mssv] = hd[a.mssv] || { ok: 0, cho: 0 }; if (a.tt === "ok") o.ok++; else if (a.tt === "cho") o.cho++; });
+  } catch (e) { console.warn("hoạt động lớp", e.message); }
+  /* Thống kê học tập, rèn luyện theo học kỳ */
+  const TH = {}; if (lopCt) svs.forEach(s => TH[s.mssv] = hocTapTH(lopCt, s.hocTap));
+  const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  const kyRows = kyList(l.khoa).filter(k => k <= kyNow()).map(k => {
+    const hk = hkOfKy(l.khoa, k), g = svs.map(s => TH[s.mssv] && TH[s.mssv].hk[hk] && TH[s.mssv].hk[hk].g4).filter(x => x != null);
+    const dr = svs.map(s => (s.drl || {})[k]).filter(x => x && x.diem != null), c = {}; dr.forEach(x => { const t = x.xepLoai || ""; c[t] = (c[t] || 0) + 1; });
+    const hl = {}; g.forEach(x => { const t = hocLuc(x); hl[t] = (hl[t] || 0) + 1; });
+    return { k, hk, g: avg(g), ng: g.length, d: avg(dr.map(x => +x.diem)), nd: dr.length, c, hl };
+  });
+  const rows = svs.map((s, i) => { const d = kLast && (s.drl || {})[kLast], th = TH[s.mssv], h = hd[s.mssv] || { ok: 0, cho: 0 }; return `<tr class="tt-row" data-go="sv/${esc(s.mssv)}" data-st="${esc(s.trangThai || "dang-hoc")}" data-q="${esc((s.mssv + " " + s.hoTen + " " + (s.sdt || "")).toLowerCase())}">
     <td class="c">${i + 1}</td><td><b>${esc(s.mssv)}</b></td><td>${esc(s.hoTen)}${s.chucVu ? `<br><small class="hs-cs">${esc(s.chucVu)}</small>` : ""}</td><td>${esc(fmtD(s.ngaySinh))}</td><td>${esc(s.sdt || "")}</td>
-    <td>${chip(s.trangThai)}</td><td class="c">${d ? (d.diem ?? "—") : ""}</td><td>${d ? xlChip(d.xepLoai) : ""}</td><td class="c">${s.email ? "✓" : ""}</td>${lopCt ? (() => { const t = tienDo(lopCt, s.hocTap); return `<td class="c">${t.qua}/${t.tong}${t.chua ? `<br><small style="color:#b3261e">${t.chua} HP chưa qua</small>` : ""}</td>`; })() : ""}</tr>`; }).join("");
+    <td>${chip(s.trangThai)}</td><td class="c">${d ? (d.diem ?? "—") : ""}</td><td>${d ? xlChip(d.xepLoai) : ""}</td><td class="c">${s.email ? "✓" : ""}</td>${lopCt ? `<td class="c"><b>${th && th.g4 != null ? th.g4.toFixed(2) : "—"}</b>${th && th.g4 != null ? `<br><small>${esc(hocLuc(th.g4))}</small>` : ""}</td>` : ""}<td class="c">${h.ok ? `<b>${h.ok}</b>` : "—"}${h.cho ? `<br><small class="muted">${h.cho} chờ xác nhận</small>` : ""}</td>${lopCt ? (() => { const t = tienDo(lopCt, s.hocTap); return `<td class="c">${t.qua}/${t.tong}${t.chua ? `<br><small style="color:#b3261e">${t.chua} HP chưa qua</small>` : ""}</td>`; })() : ""}</tr>`; }).join("");
   const hasAcc = svs.filter(s => s.email).length;
   page(`Lớp ${esc(l.id)}${l.ten ? " — " + esc(l.ten) : ""}`, `
     <div class="hs-info">${[["Ngành", l.nganh], ["Khóa trúng tuyển", l.khoa ? l.khoa + (namThu(l.khoa) ? " (năm thứ " + namThu(l.khoa) + ")" : "") : ""], ["Hệ đào tạo", l.he], ["Cố vấn học tập", (l.cvht || []).map(P.showName).join(", ") || "Chưa gán"], ["Chương trình đào tạo", l.ctdt || "Chưa gán"], ["Sĩ số", svs.length + " sinh viên · " + hasAcc + " đã có tài khoản"]].map(([a, b]) => `<div><span>${a}</span><b>${esc(b || "—")}</b></div>`).join("")}</div>
     ${l.ghiChu ? `<p class="tt-note">${esc(l.ghiChu)}</p>` : ""}
-    <div class="hs-two">
+    <div class="hs-two hs-two-w">
       <div class="sbox"><h3 class="sbox-title">BAN CÁN SỰ LỚP</h3>${bcs ? `<ul class="hs-bcs">${bcs}</ul>` : `<p class="muted">Chưa có.</p>`}</div>
-      <div class="sbox"><h3 class="sbox-title">RÈN LUYỆN ${kLast ? esc(kyName(kLast).toUpperCase()) : ""}</h3>${kLast ? `<div class="hs-dist">${XL.filter(x => dist[x]).map(x => `<div><b style="color:${XL_C[x]}">${dist[x]}</b><span>${x}</span></div>`).join("")}</div>` : `<p class="muted">Chưa có kết quả.</p>`}</div>
+      <div class="sbox"><h3 class="sbox-title">HỌC TẬP – RÈN LUYỆN THEO HỌC KỲ</h3>${kyRows.length ? `<div class="tbl-wrap"><table class="adm-table hs-kyst"><thead><tr><th>Học kỳ</th><th class="c">TB học kỳ lớp<br><small>(thang 4)</small></th><th>Học lực</th><th class="c">ĐRL TB lớp</th><th>Xếp loại rèn luyện</th></tr></thead><tbody>
+        ${kyRows.map(r => `<tr><td><b>HK ${ROMAN[r.hk]}</b> <small class="muted">${esc(kyName(r.k))}</small></td><td class="c"><b>${r.g != null ? r.g.toFixed(2) : "—"}</b>${r.ng ? `<br><small class="muted">${r.ng} SV có điểm</small>` : ""}</td>
+          <td><small>${["Xuất sắc", "Giỏi", "Khá", "Trung bình", "Yếu", "Kém"].filter(x => r.hl[x]).map(x => `${x} ${r.hl[x]}`).join(" · ") || "—"}</small></td>
+          <td class="c"><b>${r.d != null ? r.d.toFixed(1) : "—"}</b>${r.nd ? `<br><small class="muted">${r.nd} SV</small>` : ""}</td>
+          <td><small>${XL.filter(x => r.c[x]).map(x => `<b style="color:${XL_C[x]}">${x} ${r.c[x]}</b>`).join(" · ") || "—"}</small></td></tr>`).join("")}</tbody></table></div>` : `<p class="muted">Chưa có học kỳ.</p>`}</div>
     </div>
     <div class="page-tools">${edit ? `<button type="button" id="lopAcc">Cấp tài khoản cho sinh viên chưa có (${svs.length - hasAcc})</button>` : ""}<button type="button" id="lopCsv">⤓ Xuất danh sách (Excel)</button></div>
     <p><a class="pill" href="#sv-bbh/${esc(id)}">📋 Biên bản họp lớp đánh giá rèn luyện (Phụ lục 02)</a></p>${adminBox}${drlBox}
     <div class="hs-filter"><input type="search" id="lopQ" placeholder="Lọc theo mã, tên, số điện thoại…"><select id="lopSt"><option value="">Mọi trạng thái</option>${Object.keys(TT).map(k => `<option value="${k}">${TT[k][0]}</option>`).join("")}</select></div>
-    <div class="tbl-wrap"><table class="adm-table ftbl hs-tbl"><thead><tr><th class="c">STT</th><th>Mã SV</th><th>Họ và tên</th><th>Ngày sinh</th><th>Điện thoại</th><th>Trạng thái</th><th class="c">ĐRL</th><th>Xếp loại${kLast ? `<br><small>${esc(kyName(kLast))}</small>` : ""}</th><th class="c">Tài khoản</th>${lopCt ? `<th class="c">TC đã qua</th>` : ""}</tr></thead><tbody>${rows || `<tr><td colspan="10" class="muted">Chưa có sinh viên.</td></tr>`}</tbody></table></div>`,
+    <div class="tbl-wrap"><table class="adm-table ftbl hs-tbl"><thead><tr><th class="c">STT</th><th>Mã SV</th><th>Họ và tên</th><th>Ngày sinh</th><th>Điện thoại</th><th>Trạng thái</th><th class="c">ĐRL</th><th>Xếp loại${kLast ? `<br><small>${esc(kyName(kLast))}</small>` : ""}</th><th class="c">Tài khoản</th>${lopCt ? `<th class="c">TBC tích lũy<br><small>(thang 4)</small></th>` : ""}<th class="c">Hoạt động<br><small>đã xác nhận</small></th>${lopCt ? `<th class="c">TC đã qua</th>` : ""}</tr></thead><tbody>${rows || `<tr><td colspan="12" class="muted">Chưa có sinh viên.</td></tr>`}</tbody></table></div>`,
     [["sv", "Hồ sơ sinh viên"], [null, l.id]]);
   const filt = () => { const q = $("#lopQ").value.trim().toLowerCase(), st = $("#lopSt").value; document.querySelectorAll(".hs-tbl tbody tr[data-q]").forEach(tr => tr.hidden = (q && !tr.dataset.q.includes(q)) || (st && tr.dataset.st !== st)); };
   $("#lopQ").oninput = filt; $("#lopSt").onchange = filt;
